@@ -1,0 +1,10 @@
+{
+  "type": "anvilcraft:permutation",
+  "inputs": [
+    "dingdongji:frost_metal_boots",
+    "dingdongji:ember_metal_boots"
+  ],
+  "material": {
+    "items": "anvilcraft:multiphase_matter"
+  }
+}

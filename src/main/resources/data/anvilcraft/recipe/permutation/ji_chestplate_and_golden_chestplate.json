@@ -1,0 +1,10 @@
+{
+  "type": "anvilcraft:permutation",
+  "inputs": [
+    "dingdongji:ji_chestplate",
+    "minecraft:golden_chestplate"
+  ],
+  "material": {
+    "items": "dingdongji:keji_block"
+  }
+}

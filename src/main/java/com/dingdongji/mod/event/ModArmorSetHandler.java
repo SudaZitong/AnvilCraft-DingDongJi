@@ -3,6 +3,8 @@ package com.dingdongji.mod.event;
 import com.dingdongji.mod.item.ModComponents;
 import com.dingdongji.mod.item.ModItems;
 import com.dingdongji.mod.item.component.GlowingVisionComponent;
+import com.dingdongji.mod.item.component.MeaninglessData;
+import com.dingdongji.mod.network.IonocraftBootsFlyingPacket;
 import com.dingdongji.mod.util.AnvilCraftCompat;
 import com.mojang.logging.LogUtils;
 import org.slf4j.Logger;
@@ -16,6 +18,13 @@ import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ArmorItem;
+import net.minecraft.world.item.component.ItemAttributeModifiers;
+import net.minecraft.world.item.enchantment.Enchantment;
+import net.minecraft.world.item.enchantment.ItemEnchantments;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.entity.EquipmentSlotGroup;
+import net.minecraft.tags.EnchantmentTags;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
@@ -27,6 +36,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -37,6 +47,7 @@ import net.minecraft.network.chat.Component;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
+import net.neoforged.neoforge.network.PacketDistributor;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.damagesource.DamageSource;
@@ -57,43 +68,76 @@ public class ModArmorSetHandler {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final int EFFECT_DURATION = 6000; // 5 分钟
 
-    // ===== 蹈虚手动开关状态 =====
-    private static final Map<UUID, Integer> STRIDE_VOID_MODE = new HashMap<>(); // 0=正常重力, 1=无重力, 2=低重力, 3=反重力
+    /** 获取胸甲应急治愈上次触发时间（供 tooltip 使用）*/
+    public static long getChestHealCooldown(UUID uuid) {
+        return CHEST_HEAL_COOLDOWN.getOrDefault(uuid, 0L);
+    }
+
+
+
 
     // ===== 蹈火开关状态 =====
     private static final Map<UUID, Boolean> LAVA_WALKER_ENABLED = new HashMap<>();
+
+    // ===== 高亮敌对生物开关 =====
+    private static final Map<UUID, Boolean> GLOWING_VISION_ENABLED = new HashMap<>();
+
+    // ===== 舒适开关 =====
+    private static final Map<UUID, Boolean> COMFORTABLE_ENABLED = new HashMap<>();
+
+    // ===== 中子屏障开关（默认关闭）=====
+    private static final Map<UUID, Integer> NEUTRON_BARRIER_ENABLED = new HashMap<>();
 
     // ===== Boss弹飞冷却 =====
     private static final Map<UUID, Long> BOSS_PROXIMITY_START = new HashMap<>(); // Boss UUID → 进入1格时间
     private static final Map<UUID, Long> BOSS_REPEL_COOLDOWN = new HashMap<>();  // Boss UUID → 冷却结束时间
     private static final long PROXIMITY_THRESHOLD = 60;  // 3秒（60 tick）
-    private static final long REPEL_COOLDOWN = 200;      // 10秒（200 tick）
+    private static final long REPEL_COOLDOWN = 100;      // 5秒（100 tick）
 
-    // 浴火重生：上次给予生命恢复的 game time
+    // 浴火重生：上次给予生命恢复的 game time + 上次是否为灵魂火
     static final Map<UUID, Long> EMBER_LEG_LAST_HEAL_TIME = new HashMap<>();
+    private static final Map<UUID, Boolean> EMBER_LEG_WAS_SOUL_FIRE = new HashMap<>();
+    private static final int EMBER_LEG_HEAL_INTERVAL = 200; // 10秒
 
     // 超限胸甲紧急恢复冷却
     public static final Map<UUID, Long> CHEST_HEAL_COOLDOWN = new HashMap<>();
     static final Map<UUID, Boolean> CHEST_HEAL_NOTIFIED = new HashMap<>(); // 冷却是否已通知
     public static final long CHEST_HEAL_INTERVAL = 1200; // 1分钟（1200 tick）
 
+    // ===== 模组添加的效果追踪（只移除自己添加的，不影响其他模组）=====
+    private static final Map<UUID, Map<Holder<MobEffect>, Boolean>> MOD_ADDED_EFFECTS = new HashMap<>();
+
+    private static void markEffectAdded(Player player, Holder<MobEffect> effect) {
+        MOD_ADDED_EFFECTS.computeIfAbsent(player.getUUID(), k -> new HashMap<>()).put(effect, true);
+    }
+
     // ===== 玩家退出清理 =====
     @SubscribeEvent
     public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
         Player player = event.getEntity();
         UUID uuid = player.getUUID();
-        STRIDE_VOID_MODE.remove(uuid);
+        // 退出前先保存按键状态
+        saveToggleStates(player);
         LAVA_WALKER_ENABLED.remove(uuid);
+        GLOWING_VISION_ENABLED.remove(uuid);
+        COMFORTABLE_ENABLED.remove(uuid);
+        NEUTRON_BARRIER_ENABLED.remove(uuid);
         BOSS_PROXIMITY_START.clear();
         BOSS_REPEL_COOLDOWN.clear();
+        REPEL_PARTICLE_COOLDOWN.clear();
         CHEST_HEAL_COOLDOWN.remove(uuid);
         CHEST_HEAL_NOTIFIED.remove(uuid);
         EMBER_LEG_LAST_HEAL_TIME.remove(uuid);
+        EMBER_LEG_WAS_SOUL_FIRE.remove(uuid);
+        MOD_ADDED_EFFECTS.remove(uuid);
     }
+
+    /** 通过 DataComponent 标记头盔夜视状态（自动同步到客户端，无需网络包）*/
+    // setHelmetNightVision 已弃用，保留 DataComponent 注册但不使用，避免同步闪烁
 
     // ===== 主 Tick =====
     @SubscribeEvent
-    public static void onPlayerTick(PlayerTickEvent.Post event) {
+    public static void onPlayerTick(PlayerTickEvent.Pre event) {
         Player player = event.getEntity();
         if (player.level().isClientSide) return;
 
@@ -113,19 +157,21 @@ public class ModArmorSetHandler {
         handleEmberLeggings(player);
         handleEmberBoots(player);
         handleEmberBootsFirePath(player);
+        handleEmberArmorRepair(player);
 
         // ===== 超限合金套（逐件效果）=====
         handleTranscendiumHelmet(player);
         // 壁垒II 已在 handleEmberChestplate 中统一处理
         handleTranscendiumReflect(player);
-        handleTranscendiumStrideVoid(player);
+        handleMeaninglessConversion(player);
+
 
         // 蹈火双击检测已移除，改为键位切换（见 toggleLavaWalker）
 
         // ===== 超限胸甲：应急恢复检测 + 冷却通知 =====
         UUID uuid = player.getUUID();
         long now = player.level().getGameTime();
-        long lastHeal = CHEST_HEAL_COOLDOWN.getOrDefault(uuid, 0L);
+        long lastHeal = CHEST_HEAL_COOLDOWN.getOrDefault(uuid, -CHEST_HEAL_INTERVAL); // 初始值为负，首次不延迟
 
         // 应急恢复：生命值低于10时给予10秒生命恢复V（无图标无粒子），冷却5分钟
         ItemStack chest = player.getItemBySlot(EquipmentSlot.CHEST);
@@ -139,7 +185,7 @@ public class ModArmorSetHandler {
             }
 
             player.addEffect(new MobEffectInstance(MobEffects.REGENERATION, 100, 4, false, false, false));
-            LOGGER.info("[DingDongJi] 应急治愈触发，当前生命值: {}", player.getHealth());
+            markEffectAdded(player, MobEffects.REGENERATION);
             CHEST_HEAL_COOLDOWN.put(uuid, now);
             CHEST_HEAL_NOTIFIED.put(uuid, false);
             player.displayClientMessage(
@@ -159,11 +205,10 @@ public class ModArmorSetHandler {
                 );
             }
 
-            // 弹飞自身2格内的所有生物（力度3）
+            // 弹飞自身2格内的所有实体（力度3）
             AABB knockbackArea = player.getBoundingBox().inflate(2.0);
-            List<LivingEntity> nearbyEntities = player.level().getEntitiesOfClass(LivingEntity.class, knockbackArea);
-            for (LivingEntity entity : nearbyEntities) {
-                if (entity == player) continue;
+            List<Entity> nearbyEntities = player.level().getEntities(player, knockbackArea, e -> e != player);
+            for (Entity entity : nearbyEntities) {
                 double dx = entity.getX() - player.getX();
                 double dz = entity.getZ() - player.getZ();
                 double dist = Math.sqrt(dx * dx + dz * dz);
@@ -178,8 +223,19 @@ public class ModArmorSetHandler {
                 entity.hurtMarked = true;
             }
 
-            // 在脚边（弹飞范围边缘）生成一圈 END_ROD 粒子
-            spawnEndRodRing(player, 2.0);
+            // 在脚边生成爆发粒子
+            if (player.level() instanceof ServerLevel serverLevel) {
+                double px = player.getX();
+                double py = player.getY() + 0.2;
+                double pz = player.getZ();
+                serverLevel.sendParticles(
+                        ParticleTypes.END_ROD,
+                        px, py, pz,
+                        16,
+                        2.0, 0.2, 2.0,
+                        0.05
+                );
+            }
         }
 
         // 冷却结束通知
@@ -194,6 +250,9 @@ public class ModArmorSetHandler {
                     true
             );
         }
+
+        // ===== 超限合金靴子：飘升机增强创造飞行 =====
+        handleTranscendiumBootsFlight(player);
     }
 
     // ========================================================================
@@ -204,13 +263,32 @@ public class ModArmorSetHandler {
         MobEffectInstance existing = player.getEffect(effect);
         if (existing == null || existing.getDuration() < 400) {
             player.addEffect(new MobEffectInstance(effect, EFFECT_DURATION, amplifier, false, false, false));
+            markEffectAdded(player, effect);
         }
     }
 
-    private static void removeEffect(Player player, Holder<MobEffect> effect) {
-        if (player.getEffect(effect) != null) {
+    /** 只移除模组自己添加的效果，不影响其他来源的同类效果 */
+    private static void removeOwnEffect(Player player, Holder<MobEffect> effect) {
+        Map<Holder<MobEffect>, Boolean> playerEffects = MOD_ADDED_EFFECTS.get(player.getUUID());
+        if (playerEffects == null || !playerEffects.containsKey(effect)) return;
+
+        MobEffectInstance existing = player.getEffect(effect);
+        if (existing != null) {
             player.removeEffect(effect);
         }
+        playerEffects.remove(effect);
+    }
+
+    /** 只移除模组自己添加的、且 amplifier 匹配的效果（避免误删不同等级的同效果） */
+    private static void removeOwnEffectAt(Player player, Holder<MobEffect> effect, int amplifier) {
+        Map<Holder<MobEffect>, Boolean> playerEffects = MOD_ADDED_EFFECTS.get(player.getUUID());
+        if (playerEffects == null || !playerEffects.containsKey(effect)) return;
+
+        MobEffectInstance existing = player.getEffect(effect);
+        if (existing != null && existing.getAmplifier() == amplifier) {
+            player.removeEffect(effect);
+        }
+        playerEffects.remove(effect);
     }
 
     // ========================================================================
@@ -257,9 +335,28 @@ public class ModArmorSetHandler {
     private static final ResourceLocation COMFORTABLE_STEP_ID =
             ResourceLocation.parse("dingdongji:comfortable_step");
 
+    public static void toggleComfortable(ServerPlayer player) {
+        ItemStack boots = player.getItemBySlot(EquipmentSlot.FEET);
+        if (!boots.is(ModItems.ROYAL_STEEL_BOOTS.get())) {
+            return;
+        }
+
+        UUID uuid = player.getUUID();
+        boolean enabled = COMFORTABLE_ENABLED.getOrDefault(uuid, false);
+        enabled = !enabled;
+        COMFORTABLE_ENABLED.put(uuid, enabled);
+
+        player.displayClientMessage(
+                Component.literal(String.format("舒适：%s", enabled ? "开" : "关"))
+                        .withStyle(ChatFormatting.GREEN),
+                true
+        );
+    }
+
     private static void handleComfortable(Player player) {
         ItemStack boots = player.getItemBySlot(EquipmentSlot.FEET);
-        boolean hasComfort = boots.is(ModItems.ROYAL_STEEL_BOOTS.get());
+        boolean hasComfort = boots.is(ModItems.ROYAL_STEEL_BOOTS.get())
+                && COMFORTABLE_ENABLED.getOrDefault(player.getUUID(), false);
 
         AttributeInstance moveSpeed = player.getAttribute(Attributes.MOVEMENT_SPEED);
         AttributeInstance stepHeight = player.getAttribute(Attributes.STEP_HEIGHT);
@@ -289,10 +386,6 @@ public class ModArmorSetHandler {
     public static void toggleLavaWalker(ServerPlayer player) {
         ItemStack boots = player.getItemBySlot(EquipmentSlot.FEET);
         if (!boots.is(ModItems.EMBER_METAL_BOOTS.get())) {
-            player.displayClientMessage(
-                    Component.literal("[叮咚叽] 未穿戴余烬金属靴子，无法切换蹈火").withStyle(ChatFormatting.RED),
-                    true
-            );
             return;
         }
 
@@ -316,86 +409,124 @@ public class ModArmorSetHandler {
     //  余烬头盔：隔热（抗火）
     // ========================================================================
     private static void handleEmberHelmet(Player player) {
-        if (player.getItemBySlot(EquipmentSlot.HEAD).is(ModItems.EMBER_METAL_HELMET.get())) {
+        ItemStack head = player.getItemBySlot(EquipmentSlot.HEAD);
+        if (head.is(ModItems.EMBER_METAL_HELMET.get()) || head.is(ModItems.TRANSCENDIUM_HELMET.get())) {
             addHiddenEffect(player, MobEffects.FIRE_RESISTANCE, 0);
-        } else if (!player.getItemBySlot(EquipmentSlot.HEAD).is(ModItems.TRANSCENDIUM_HELMET.get())) {
-            // 超限合金头盔也需要抗火，不在此处移除
-            removeEffect(player, MobEffects.FIRE_RESISTANCE);
+        } else {
+            removeOwnEffect(player, MobEffects.FIRE_RESISTANCE);
         }
     }
 
     // ========================================================================
     //  胸甲抗性统一处理（壁垒 I / 壁垒 II）
+    //  即脱即消：脱下胸甲时立即移除本模组添加的抗性
+    //  不影响其他来源：只移除自己添加的，不触碰其他模组/食物给的
+    //  高等级覆盖：当盔甲自身效果等级更高时覆盖低等级外部效果
     // ========================================================================
     private static void handleEmberChestplate(Player player) {
-        if (player.getItemBySlot(EquipmentSlot.CHEST).is(ModItems.TRANSCENDIUM_CHESTPLATE.get())) {
-            addHiddenEffect(player, MobEffects.DAMAGE_RESISTANCE, 3); // 壁垒 II
-        } else if (player.getItemBySlot(EquipmentSlot.CHEST).is(ModItems.EMBER_METAL_CHESTPLATE.get())) {
-            addHiddenEffect(player, MobEffects.DAMAGE_RESISTANCE, 1); // 壁垒 I
+        ItemStack chest = player.getItemBySlot(EquipmentSlot.CHEST);
+
+        if (chest.is(ModItems.TRANSCENDIUM_CHESTPLATE.get())) {
+            // 超限胸甲：壁垒II（Resistance IV, amplifier=3）
+            applyBarrierEffect(player, 3);
+        } else if (chest.is(ModItems.EMBER_METAL_CHESTPLATE.get())) {
+            // 余烬胸甲：壁垒I（Resistance II, amplifier=1）
+            applyBarrierEffect(player, 1);
         } else {
-            removeEffect(player, MobEffects.DAMAGE_RESISTANCE);
+            // 不穿对应胸甲时，只移除本模组添加的抗性，不影响其他来源
+            removeOwnEffect(player, MobEffects.DAMAGE_RESISTANCE);
         }
     }
 
-    // ========================================================================
-    //  余烬护腿：浴火重生（火焰/熔岩中每10秒给予一次生命恢复）
-    // ========================================================================
-    private static final int EMBER_LEG_HEAL_INTERVAL = 200; // 10秒（200 tick）
-    private static final int EMBER_LEG_HEAL_DURATION = 200; // 10秒生命恢复效果
+    /**
+     * 胸甲抗性效果应用逻辑：
+     * - 无现有抗性 → 添加我们的
+     * - 现有抗性等级更低 → 替换为我们的高等级
+     * - 现有抗性同等级且是我们添加的 → 续期
+     * - 现有抗性等级更高 → 不干预
+     */
+    private static void applyBarrierEffect(Player player, int amplifier) {
+        MobEffectInstance existing = player.getEffect(MobEffects.DAMAGE_RESISTANCE);
 
+        if (existing == null) {
+            // 无现有抗性，直接添加
+            player.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, EFFECT_DURATION, amplifier, false, false, false));
+            markEffectAdded(player, MobEffects.DAMAGE_RESISTANCE);
+        } else if (existing.getAmplifier() < amplifier) {
+            // 现有抗性等级更低，替换为我们的高等级
+            player.removeEffect(MobEffects.DAMAGE_RESISTANCE);
+            player.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, EFFECT_DURATION, amplifier, false, false, false));
+            markEffectAdded(player, MobEffects.DAMAGE_RESISTANCE);
+        } else if (existing.getAmplifier() == amplifier) {
+            // 同等级，检查是否是我们添加的，是则续期
+            Map<Holder<MobEffect>, Boolean> playerEffects = MOD_ADDED_EFFECTS.get(player.getUUID());
+            boolean isOurs = playerEffects != null && playerEffects.containsKey(MobEffects.DAMAGE_RESISTANCE);
+            if (isOurs && existing.getDuration() < 400) {
+                player.removeEffect(MobEffects.DAMAGE_RESISTANCE);
+                player.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, EFFECT_DURATION, amplifier, false, false, false));
+                markEffectAdded(player, MobEffects.DAMAGE_RESISTANCE);
+            }
+        }
+        // 现有抗性等级更高时，不做任何操作
+    }
+
+    // ========================================================================
+    //  余烬护腿：浴火重生（火焰/熔岩中每 tick 检测，即时给予/移除效果）
+    // ========================================================================
     private static void handleEmberLeggings(Player player) {
         ItemStack leggings = player.getItemBySlot(EquipmentSlot.LEGS);
         UUID uuid = player.getUUID();
+
+        if (!leggings.is(ModItems.EMBER_METAL_LEGGINGS.get())) return;
 
         Level level = player.level();
         BlockPos playerPos = player.blockPosition();
 
         // 先检测是否处于灵魂火/灵魂篝火中（灵魂火优先，效果翻倍）
+        // 灵魂沙等非完整方块上行走时，playerPos 返回的是脚下的方块而非脚部位置
+        // 因此同时检测 playerPos 和 playerPos.above()
         boolean inSoulFire = level.getBlockState(playerPos).is(Blocks.SOUL_FIRE)
                 || level.getBlockState(playerPos).is(Blocks.SOUL_CAMPFIRE)
+                || level.getBlockState(playerPos.above()).is(Blocks.SOUL_FIRE)
+                || level.getBlockState(playerPos.above()).is(Blocks.SOUL_CAMPFIRE)
                 || level.getBlockState(playerPos.below()).is(Blocks.SOUL_CAMPFIRE)
                 || level.getBlockState(playerPos.below(2)).is(Blocks.SOUL_CAMPFIRE);
-        if (!inSoulFire) {
-            for (int dx = -1; dx <= 1 && !inSoulFire; dx++) {
-                for (int dz = -1; dz <= 1 && !inSoulFire; dz++) {
-                    for (int dy = -2; dy <= 0 && !inSoulFire; dy++) {
-                        BlockPos check = playerPos.offset(dx, dy, dz);
-                        inSoulFire = level.getBlockState(check).is(Blocks.SOUL_FIRE)
-                                || level.getBlockState(check).is(Blocks.SOUL_CAMPFIRE);
-                    }
-                }
-            }
-        }
 
         // 再检测普通火焰（如果已经检测到灵魂火，跳过普通火检测）
-        boolean inFire = inSoulFire || player.isInLava()
-                || level.getBlockState(playerPos).is(Blocks.FIRE)
-                || level.getBlockState(playerPos).is(Blocks.CAMPFIRE)
-                || level.getBlockState(playerPos.below()).is(Blocks.CAMPFIRE);
+        // 优化：先快速判断 isOnFire，着火则无需查询普通篝火方块
+        boolean inFire = inSoulFire || player.isOnFire();
         if (!inFire) {
-            for (int dx = -1; dx <= 1 && !inFire; dx++) {
-                for (int dz = -1; dz <= 1 && !inFire; dz++) {
-                    BlockPos check = playerPos.offset(dx, 0, dz);
-                    inFire = level.getBlockState(check).is(Blocks.FIRE)
-                            || level.getBlockState(check).is(Blocks.CAMPFIRE);
-                }
+            // 未着火时才检查普通篝火（覆盖灵魂沙等边缘情况）
+            inFire = level.getBlockState(playerPos).is(Blocks.CAMPFIRE)
+                    || level.getBlockState(playerPos.above()).is(Blocks.CAMPFIRE)
+                    || level.getBlockState(playerPos.below()).is(Blocks.CAMPFIRE);
+        }
+
+        if (inFire) {
+            long now = player.level().getGameTime();
+            long lastHealTime = EMBER_LEG_LAST_HEAL_TIME.getOrDefault(uuid, -999L);
+            boolean wasSoulFire = EMBER_LEG_WAS_SOUL_FIRE.getOrDefault(uuid, false);
+
+            // 火焰类型切换时（灵魂火↔普通火），立即替换效果等级
+            if (inSoulFire != wasSoulFire) {
+                player.removeEffect(MobEffects.REGENERATION);
+                int amplifier = inSoulFire ? 2 : 1;
+                // 效果持续时间比刷新间隔长 60 ticks（3秒），避免结束前闪烁
+                player.addEffect(new MobEffectInstance(MobEffects.REGENERATION, EMBER_LEG_HEAL_INTERVAL + 60, amplifier, false, false, false));
+                EMBER_LEG_LAST_HEAL_TIME.put(uuid, now);
+                EMBER_LEG_WAS_SOUL_FIRE.put(uuid, inSoulFire);
+            } else if (now - lastHealTime >= EMBER_LEG_HEAL_INTERVAL) {
+                // 10秒间隔刷新
+                int amplifier = inSoulFire ? 2 : 1;
+                // 效果持续时间比刷新间隔长 60 ticks（3秒），避免结束前闪烁
+                player.addEffect(new MobEffectInstance(MobEffects.REGENERATION, EMBER_LEG_HEAL_INTERVAL + 60, amplifier, false, false, false));
+                EMBER_LEG_LAST_HEAL_TIME.put(uuid, now);
+                EMBER_LEG_WAS_SOUL_FIRE.put(uuid, inSoulFire);
             }
-        }
-        if (!inFire) {
+        } else {
+            // 离开火焰：不强制移除，让效果自然结束
             EMBER_LEG_LAST_HEAL_TIME.remove(uuid);
-            return;
-        }
-
-        if (!leggings.is(ModItems.EMBER_METAL_LEGGINGS.get())) return;
-
-        long now = player.level().getGameTime();
-        long lastHealTime = EMBER_LEG_LAST_HEAL_TIME.getOrDefault(uuid, -999L);
-
-        if (now - lastHealTime >= EMBER_LEG_HEAL_INTERVAL) {
-            int amplifier = inSoulFire ? 1 : 0;
-            player.addEffect(new MobEffectInstance(MobEffects.REGENERATION, EMBER_LEG_HEAL_DURATION, amplifier, false, false, false));
-            EMBER_LEG_LAST_HEAL_TIME.put(uuid, now);
-            if (now % 20 < 2) LOGGER.info("[DingDongJi] 浴火重生：给予生命恢复{} (10秒间隔)", amplifier == 1 ? "II" : "I");
+            EMBER_LEG_WAS_SOUL_FIRE.remove(uuid);
         }
     }
 
@@ -464,15 +595,66 @@ public class ModArmorSetHandler {
     }
 
     // ========================================================================
+    //  余烬金属套：火焰中修复耐久（类似重铸效果）
+    // ========================================================================
+    private static void handleEmberArmorRepair(Player player) {
+        // 快速路径：玩家着火或在熔岩中（最常见场景）→ 直接修复，零方块查询
+        if (player.isOnFire() || player.isInLava()) {
+            repairEmberArmor(player);
+            return;
+        }
+
+        // 慢速路径：玩家未着火时检查脚下火焰源（灵魂火/灵魂篝火等不触发 isOnFire 的火焰源）
+        Level level = player.level();
+        BlockPos playerPos = player.blockPosition();
+        if (isFireBlock(level, playerPos) || isFireBlock(level, playerPos.above())
+                || isFireBlock(level, playerPos.below())) {
+            repairEmberArmor(player);
+        }
+    }
+
+    /** 判断方块是否为火焰类方块（火/灵魂火/篝火/灵魂篝火） */
+    private static boolean isFireBlock(Level level, BlockPos pos) {
+        BlockState bs = level.getBlockState(pos);
+        return bs.is(Blocks.FIRE) || bs.is(Blocks.SOUL_FIRE)
+                || bs.is(Blocks.CAMPFIRE) || bs.is(Blocks.SOUL_CAMPFIRE);
+    }
+
+    /** 对余烬金属套进行耐久修复（每 4 tick 修复 1 点） */
+    private static void repairEmberArmor(Player player) {
+        if (player.tickCount % 4 != 0) return;
+        ItemStack[] emberPieces = {
+            player.getItemBySlot(EquipmentSlot.HEAD),
+            player.getItemBySlot(EquipmentSlot.CHEST),
+            player.getItemBySlot(EquipmentSlot.LEGS),
+            player.getItemBySlot(EquipmentSlot.FEET)
+        };
+        for (ItemStack piece : emberPieces) {
+            if (piece.is(ModItems.EMBER_METAL_HELMET.get()) ||
+                piece.is(ModItems.EMBER_METAL_CHESTPLATE.get()) ||
+                piece.is(ModItems.EMBER_METAL_LEGGINGS.get()) ||
+                piece.is(ModItems.EMBER_METAL_BOOTS.get())) {
+                if (piece.isDamaged()) {
+                    piece.setDamageValue(Math.max(0, piece.getDamageValue() - 1));
+                }
+            }
+        }
+    }
+
+    // ========================================================================
     //  皇家钢胸甲：皇家亲和（生命恢复 I）
     // ========================================================================
     private static void handleRoyalSteelChestplate(Player player) {
         if (player.getItemBySlot(EquipmentSlot.CHEST).is(ModItems.ROYAL_STEEL_CHESTPLATE.get())) {
             addHiddenEffect(player, MobEffects.REGENERATION, 0);
+        } else {
+            // 即脱即消：只移除本模组添加的 Regen amplifier=0（皇家钢亲和），
+            // 不影响应急治愈(amp=4)和浴火重生(amp=1/2)的 Regen
+            removeOwnEffectAt(player, MobEffects.REGENERATION, 0);
         }
-        // 不再在 else 分支移除 REGENERATION，避免误移除应急治愈（V级）和浴火重生的生命恢复效果
-        // 皇家亲和的生命恢复会由 addHiddenEffect 的持续时间自然管理
     }
+
+
 
     // ========================================================================
     //  超越合金头盔：适应（夜视 + 水下呼吸 + 敌对发光）
@@ -480,29 +662,46 @@ public class ModArmorSetHandler {
     private static void handleTranscendiumHelmet(Player player) {
         ItemStack helmet = player.getItemBySlot(EquipmentSlot.HEAD);
         if (!helmet.is(ModItems.TRANSCENDIUM_HELMET.get())) {
-            removeEffect(player, MobEffects.NIGHT_VISION);
-            removeEffect(player, MobEffects.WATER_BREATHING);
+            // 没戴头盔时清除模组添加的夜视效果，不影响其他来源
+            removeOwnEffect(player, MobEffects.NIGHT_VISION);
+            removeOwnEffect(player, MobEffects.WATER_BREATHING);
             return;
         }
 
-        addHiddenEffect(player, MobEffects.NIGHT_VISION, 0);
+        // 持续移除黑暗效果（监守者/潜声等来源的黑暗会被不断清除）
+        if (player.hasEffect(MobEffects.DARKNESS)) {
+            player.removeEffect(MobEffects.DARKNESS);
+        }
+
+        // 从 HELMET_MODE Map 读取夜视状态（与旧版一致，避免 DataComponent 同步导致闪烁）
+        int mode = HELMET_MODE.getOrDefault(player.getUUID(), 0);
+        if (mode == 2 || mode == 4) {
+            addHiddenEffect(player, MobEffects.NIGHT_VISION, 0);
+        }
+
+        // 水下呼吸按需应用
         addHiddenEffect(player, MobEffects.WATER_BREATHING, 0);
+        // 隐藏抗火效果（火焰伤害免疫 + 岩浆明视由 mixin 补充）
         addHiddenEffect(player, MobEffects.FIRE_RESISTANCE, 0);
 
-        GlowingVisionComponent vision = helmet.get(ModComponents.GLOWING_VISION.get());
-        if (vision == null) vision = GlowingVisionComponent.DEFAULT;
-        int range = vision.range();
+        // 检查高亮开关（降频到每20tick扫描一次；GLOWING 持续200tick=10秒，不会断档）
+        if (GLOWING_VISION_ENABLED.getOrDefault(player.getUUID(), false)
+                && player.tickCount % 20 == 0) {
+            GlowingVisionComponent vision = helmet.get(ModComponents.GLOWING_VISION.get());
+            if (vision == null) vision = GlowingVisionComponent.DEFAULT;
+            int range = vision.range();
 
-        AABB area = player.getBoundingBox().inflate(range);
-        List<LivingEntity> hostiles = player.level().getEntitiesOfClass(
-                LivingEntity.class, area,
-                e -> e != player && e.isAlive() && isHostileTo(e, player)
-        );
+            AABB area = player.getBoundingBox().inflate(range);
+            List<LivingEntity> hostiles = player.level().getEntitiesOfClass(
+                    LivingEntity.class, area,
+                    e -> e != player && e.isAlive() && (e instanceof net.minecraft.world.entity.monster.Enemy || (e instanceof net.minecraft.world.entity.Mob mob && mob.getTarget() == player)) && isHostileTo(e, player)
+            );
 
-        for (LivingEntity living : hostiles) {
-            MobEffectInstance existing = living.getEffect(MobEffects.GLOWING);
-            if (existing == null || existing.getDuration() <= 100) {
-                living.addEffect(new MobEffectInstance(MobEffects.GLOWING, 200, 0, false, false, true));
+            for (LivingEntity living : hostiles) {
+                MobEffectInstance existing = living.getEffect(MobEffects.GLOWING);
+                if (existing == null || existing.getDuration() <= 100) {
+                    living.addEffect(new MobEffectInstance(MobEffects.GLOWING, 200, 0, false, false, true));
+                }
             }
         }
     }
@@ -514,65 +713,220 @@ public class ModArmorSetHandler {
     }
 
     // ========================================================================
-    //  超限合金护腿：屏蔽（2格内清除敌对弹射物 + Boss弹飞）
+    //  超限合金头盔：高亮敌对生物切换
+    // ========================================================================
+    // 适应模式切换（高亮/夜视循环）：0=高亮开 1=高亮关 2=夜视开 3=夜视关 4=全开 5=全关
+    private static final Map<UUID, Integer> HELMET_MODE = new HashMap<>();
+
+    // 记录 WATER_BREATHING/FIRE_RESISTANCE 是否已应用，同样避免每 tick 重新 addEffect
+
+    private static final ChatFormatting[] HELMET_MODE_COLORS = {
+            ChatFormatting.GREEN, ChatFormatting.RED, ChatFormatting.AQUA,
+            ChatFormatting.YELLOW, ChatFormatting.LIGHT_PURPLE, ChatFormatting.BLUE
+    };
+
+    public static void toggleGlowingVision(ServerPlayer player) {
+        ItemStack helmet = player.getItemBySlot(EquipmentSlot.HEAD);
+        if (!helmet.is(ModItems.TRANSCENDIUM_HELMET.get())) return;
+
+        UUID uuid = player.getUUID();
+        int nextMode = (HELMET_MODE.getOrDefault(uuid, 0) + 1) % 6;
+        HELMET_MODE.put(uuid, nextMode);
+        boolean glowingOn = (nextMode == 0 || nextMode == 4);
+        boolean nightVisionOn = (nextMode == 2 || nextMode == 4);
+        GLOWING_VISION_ENABLED.put(uuid, glowingOn);
+
+        // 通过 HELMET_MODE Map 即时应用/移除药水效果（与旧版一致）
+        if (nightVisionOn) {
+            addHiddenEffect(player, MobEffects.NIGHT_VISION, 0);
+        } else {
+            removeOwnEffect(player, MobEffects.NIGHT_VISION);
+        }
+
+                String[] names = {
+                "\u9002\u5E94\uFF1A\u9AD8\u4EAE\u5F00",
+                "\u9002\u5E94\uFF1A\u9AD8\u4EAE\u5173",
+                "\u9002\u5E94\uFF1A\u591C\u89C6\u5F00",
+                "\u9002\u5E94\uFF1A\u591C\u89C6\u5173",
+                "\u9002\u5E94\uFF1A\u5168\u5F00",
+                "\u9002\u5E94\uFF1A\u5168\u5173"
+        };
+        player.displayClientMessage(
+                Component.literal(names[nextMode]).withStyle(HELMET_MODE_COLORS[nextMode]), true
+        );
+    }
+
+    public static void toggleNeutronBarrier(ServerPlayer player) {
+        ItemStack leggings = player.getItemBySlot(EquipmentSlot.LEGS);
+        if (!leggings.is(ModItems.TRANSCENDIUM_LEGGINGS.get())) {
+            return;
+        }
+
+        UUID uuid = player.getUUID();
+        int state = NEUTRON_BARRIER_ENABLED.getOrDefault(uuid, 0);
+        state = (state + 1) % 4;
+        NEUTRON_BARRIER_ENABLED.put(uuid, state);
+
+        switch (state) {
+            case 0 -> player.displayClientMessage(
+                    Component.literal("中子屏障：关闭屏蔽").withStyle(ChatFormatting.BLUE), true);
+            case 1 -> player.displayClientMessage(
+                    Component.literal("中子屏障：屏蔽敌对生物").withStyle(ChatFormatting.GREEN), true);
+            case 2 -> player.displayClientMessage(
+                    Component.literal("中子屏障：屏蔽弹射物").withStyle(ChatFormatting.AQUA), true);
+            case 3 -> player.displayClientMessage(
+                    Component.literal("中子屏障：全部屏蔽").withStyle(ChatFormatting.LIGHT_PURPLE), true);
+        }
+    }
+
+    // ========================================================================
+    //  浮霜金属套：无义——将非诅咒附魔转换为护甲值与盔甲韧性
+    // ========================================================================
+    private static final ResourceLocation MEANINGLESS_ARMOR_ID =
+            ResourceLocation.fromNamespaceAndPath("dingdongji", "meaningless_armor");
+    private static final ResourceLocation MEANINGLESS_TOUGHNESS_ID =
+            ResourceLocation.fromNamespaceAndPath("dingdongji", "meaningless_toughness");
+
+    private static void handleMeaninglessConversion(Player player) {
+        // 扫描玩家所有背包槽位（主手+背包+盔甲+副手），参考铁砧工艺无情
+        for (ItemStack stack : player.getInventory().items) {
+            tryConvertFrostMetalPiece(player, stack);
+        }
+        for (ItemStack stack : player.getInventory().armor) {
+            tryConvertFrostMetalPiece(player, stack);
+        }
+        tryConvertFrostMetalPiece(player, player.getOffhandItem());
+    }
+
+    private static void tryConvertFrostMetalPiece(Player player, ItemStack stack) {
+        ArmorItem.Type type = null;
+        if (stack.is(ModItems.FROST_METAL_HELMET.get())) type = ArmorItem.Type.HELMET;
+        else if (stack.is(ModItems.FROST_METAL_CHESTPLATE.get())) type = ArmorItem.Type.CHESTPLATE;
+        else if (stack.is(ModItems.FROST_METAL_LEGGINGS.get())) type = ArmorItem.Type.LEGGINGS;
+        else if (stack.is(ModItems.FROST_METAL_BOOTS.get())) type = ArmorItem.Type.BOOTS;
+        else return;
+
+        convertPiece(player, stack, type);
+    }
+
+    private static void convertPiece(Player player, ItemStack stack, ArmorItem.Type armorType) {
+        ItemEnchantments enchantments = stack.getOrDefault(DataComponents.ENCHANTMENTS, ItemEnchantments.EMPTY);
+        if (enchantments.isEmpty()) return;
+
+        // 获取已转换的附魔记录
+        ItemEnchantments convertedEnchs = stack.getOrDefault(ModComponents.MEANINGLESS_DATA.get(),
+                MeaninglessData.EMPTY).convertedEnchantments();
+
+        int newLevels = 0;
+        ItemEnchantments.Mutable convertedEnchsMut = new ItemEnchantments.Mutable(convertedEnchs);
+
+        // 转换所有附魔（包括诅咒）
+        for (Holder<Enchantment> enchantment : enchantments.keySet()) {
+            int level = enchantments.getLevel(enchantment);
+            if (convertedEnchs.getLevel(enchantment) >= level) {
+                continue;
+            }
+            int addLevels = level - convertedEnchs.getLevel(enchantment);
+            if (addLevels > 0) {
+                newLevels += addLevels;
+            }
+            convertedEnchsMut.set(enchantment, level);
+        }
+
+        if (newLevels == 0) return;
+
+        // 计算总等级
+        int totalLevels = 0;
+        for (Holder<Enchantment> e : convertedEnchsMut.keySet()) {
+            totalLevels += convertedEnchsMut.getLevel(e);
+        }
+
+        // 记录附魔到 MEANINGLESS_DATA 供属性加成和 tooltip 使用
+        // 注意：不清除 minecraft:enchantments，确保锻造台配方能继承附魔
+        stack.set(ModComponents.MEANINGLESS_DATA.get(), new MeaninglessData(totalLevels, convertedEnchsMut.toImmutable()));
+
+        // 计算护甲加成
+        float bonusArmor = (float) Math.round(Math.sqrt(totalLevels) * 1.5 + totalLevels / 5.0);
+        float bonusToughness = totalLevels / 3.0f;
+
+        // 构建属性修饰符
+        ItemAttributeModifiers.Builder builder = ItemAttributeModifiers.builder();
+        if (bonusArmor > 0) {
+            builder.add(
+                    Attributes.ARMOR,
+                    new AttributeModifier(MEANINGLESS_ARMOR_ID, bonusArmor, AttributeModifier.Operation.ADD_VALUE),
+                    EquipmentSlotGroup.bySlot(armorType.getSlot())
+            );
+        }
+        if (bonusToughness > 0) {
+            builder.add(
+                    Attributes.ARMOR_TOUGHNESS,
+                    new AttributeModifier(MEANINGLESS_TOUGHNESS_ID, bonusToughness, AttributeModifier.Operation.ADD_VALUE),
+                    EquipmentSlotGroup.bySlot(armorType.getSlot())
+            );
+        }
+        // 保留基础属性修饰符
+        for (ItemAttributeModifiers.Entry entry : stack.getAttributeModifiers().modifiers()) {
+            if (!entry.modifier().is(MEANINGLESS_ARMOR_ID) && !entry.modifier().is(MEANINGLESS_TOUGHNESS_ID)) {
+                builder.add(entry.attribute(), entry.modifier(), entry.slot());
+            }
+        }
+        stack.set(DataComponents.ATTRIBUTE_MODIFIERS, builder.build());
+    }
+
+
+    // ========================================================================
+    //  超限合金护腿：中子屏障（常驻清除弹射物 + 按Z键切换弹飞）
     // ========================================================================
     private static void handleTranscendiumReflect(Player player) {
         ItemStack leggings = player.getItemBySlot(EquipmentSlot.LEGS);
         if (!leggings.is(ModItems.TRANSCENDIUM_LEGGINGS.get())) return;
 
         Level level = player.level();
-        AABB range = player.getBoundingBox().inflate(2.0);
-
-        // 清除弹射物：来自敌对生物 或 将要伤害自身的弹射物
-        List<Projectile> projectiles = level.getEntitiesOfClass(
-                Projectile.class, range,
-                p -> p.isAlive() && isHarmfulProjectile(p, player)
-        );
-        for (Projectile projectile : projectiles) {
-            spawnPurpleParticles(level, projectile.position());
-            projectile.discard();
-        }
-
-        // 高威胁生物弹飞：贴近2格时弹飞，若1格内停留3秒则关闭弹飞10秒
-        AABB closeRange = player.getBoundingBox().inflate(1.0);
+        Vec3 center = player.position();
+        double shieldRadius = 3.0;
         long gameTime = level.getGameTime();
 
-        List<LivingEntity> threats = level.getEntitiesOfClass(
-                LivingEntity.class, range,
-                e -> e != player && e.isAlive() && isBoss(e)
+        // ===== 屏蔽弹射物（受中子屏障状态控制）=====
+        int __bs = NEUTRON_BARRIER_ENABLED.getOrDefault(player.getUUID(), 0);
+        if (__bs == 2 || __bs == 3) {
+            List<Projectile> projectiles = level.getEntitiesOfClass(
+                    Projectile.class, player.getBoundingBox().inflate(shieldRadius),
+                    p -> p.isAlive() && p.distanceToSqr(center) <= shieldRadius * shieldRadius
+                            && isHarmfulProjectile(p, player)
+            );
+            for (Projectile projectile : projectiles) {
+                spawnAbsorptionRipple(level, projectile.position(), player);
+                projectile.discard();
+            }
+        }
+
+        // ===== 开关：弹飞所有实体（按Z键切换）=====
+        int __state = NEUTRON_BARRIER_ENABLED.getOrDefault(player.getUUID(), 0);
+        if (__state != 1 && __state != 3) return;
+
+        AABB range = player.getBoundingBox().inflate(2.0, 2.0, 2.0).expandTowards(0, -3, 0);
+        List<Entity> threats = level.getEntities(
+                player, range,
+                e -> e != player && e.isAlive() && (e instanceof net.minecraft.world.entity.monster.Enemy || (e instanceof net.minecraft.world.entity.Mob mob && mob.getTarget() == player))
         );
-        for (LivingEntity threat : threats) {
+        for (Entity threat : threats) {
             UUID tid = threat.getUUID();
 
-            // 检查冷却
+            // 检查弹飞冷却
             Long cooldownEnd = BOSS_REPEL_COOLDOWN.get(tid);
             if (cooldownEnd != null && gameTime < cooldownEnd) continue;
-
-            // 检查是否在1格内
-            if (closeRange.contains(threat.position())) {
-                Long start = BOSS_PROXIMITY_START.get(tid);
-                if (start == null) {
-                    BOSS_PROXIMITY_START.put(tid, gameTime);
-                } else if (gameTime - start >= PROXIMITY_THRESHOLD) {
-                    // 在1格内停留超过3秒 → 冷却10秒
-                    BOSS_REPEL_COOLDOWN.put(tid, gameTime + REPEL_COOLDOWN);
-                    BOSS_PROXIMITY_START.remove(tid);
-                    continue;
-                }
-            } else {
-                BOSS_PROXIMITY_START.remove(tid);
-            }
 
             // 弹飞
             Vec3 knockDir = threat.position().subtract(player.position()).normalize();
             threat.push(knockDir.x * 1.5, 0.1, knockDir.z * 1.5);
             threat.hurtMarked = true;
 
-            // 在玩家周围生成一圈 END_ROD 粒子（中子屏障效果）
-            spawnEndRodRing(player, 2.0);
+            // 冲击波爆发 + 拖尾
+            spawnRepelBurst(player, threat, knockDir, gameTime);
         }
 
-        // 清理不在范围内的Boss冷却状态
+        // 清理不在范围内的Boss冷却状态和粒子冷却
         BOSS_PROXIMITY_START.keySet().removeIf(id -> {
             Entity e = ((ServerLevel)level).getEntity(id);
             return e == null || !e.isAlive() || !range.contains(e.position());
@@ -599,7 +953,11 @@ public class ModArmorSetHandler {
         // 所有者是敌对生物或玩家 → 伤害自身
         if (owner instanceof Enemy) return true;
         if (owner instanceof Mob mob && mob.getTarget() == player) return true;
-        if (owner instanceof Player && owner != player) return true;
+        if (owner instanceof Player && owner != player) {
+            // 仅清除原版弹射物，模组弹射物放过（如钩爪等工具类弹射物）
+            if (projectile.getClass().getName().startsWith("net.minecraft.")) return true;
+            return false;
+        }
         return false;
     }
 
@@ -608,169 +966,246 @@ public class ModArmorSetHandler {
         return entity.getMaxHealth() >= 150.0;
     }
 
-    private static void spawnPurpleParticles(Level level, Vec3 pos) {
-        if (level instanceof ServerLevel serverLevel) {
-            serverLevel.sendParticles(
-                    ParticleTypes.WITCH,
-                    pos.x, pos.y + 0.5, pos.z,
-                    3, 0.1, 0.1, 0.1, 0
-            );
-        }
+    /** 清除弹射物时：弹射物位置的女巫紫色爆裂粒子 */
+    private static void spawnAbsorptionRipple(Level level, Vec3 pos, Player player) {
+        if (!(level instanceof ServerLevel serverLevel)) return;
+
+        // 弹射物位置：新粒子，从小变大，2s 消失
+        serverLevel.sendParticles(
+                com.dingdongji.mod.init.ModParticles.NEUTRON_BARRIER_ABSORB.get(),
+                pos.x, pos.y + 0.5, pos.z,
+                1, 0, 0, 0, 0
+        );
     }
 
-    /** 在玩家周围生成一圈 END_ROD 粒子（中子星蓝色屏障效果） */
-    private static void spawnEndRodRing(Player player, double radius) {
+    /**
+     * 弹飞生物时：从玩家胸腔处生成一个平躺的屏障粒子，
+     * 粒子会同时放大、淡出、下坠到地面（具体动画在 NeutronBarrierParticle.tick）。
+     */
+    /** 屏蔽敌对生物粒子的生成冷却（tick），1s 一次 */
+    private static final java.util.Map<UUID, Long> REPEL_PARTICLE_COOLDOWN = new java.util.HashMap<>();
+
+    private static void spawnRepelBurst(Player player, Entity threat, Vec3 knockDir, long gameTime) {
         if (!(player.level() instanceof ServerLevel serverLevel)) return;
-        double px = player.getX();
-        double py = player.getY() + 0.2;
-        double pz = player.getZ();
-        int count = 24; // 圆环上粒子数量
-        for (int i = 0; i < count; i++) {
-            double angle = 2.0 * Math.PI * i / count;
-            double dx = radius * Math.cos(angle);
-            double dz = radius * Math.sin(angle);
-            serverLevel.sendParticles(
-                    ParticleTypes.END_ROD,
-                    px + dx, py, pz + dz,
-                    1, 0.0, 0.0, 0.0, 0.01
+
+        // 每 1s 产生一次，避免一直屏蔽一直触发粒子
+        UUID uid = player.getUUID();
+        Long last = REPEL_PARTICLE_COOLDOWN.get(uid);
+        if (last != null && gameTime - last < 20) return; // 1s (20 tick) 冷却
+        REPEL_PARTICLE_COOLDOWN.put(uid, gameTime);
+
+        // 从玩家胸腔处生成粒子
+        Vec3 chest = player.position().add(0, 1.5, 0);
+        serverLevel.sendParticles(
+                com.dingdongji.mod.init.ModParticles.NEUTRON_BARRIER_REPEL.get(),
+                chest.x, chest.y, chest.z,
+                1, 0, 0, 0, 0
             );
-        }
     }
 
-    // ========================================================================
-    //  超限合金靴子：蹈虚（手动开关失重 + 常驻摔落伤害归零）
-    // ========================================================================
-    private static final ResourceLocation STRIDE_VOID_GRAVITY_ID =
-            ResourceLocation.parse("dingdongji:stride_void_gravity");
-    private static final ResourceLocation STRIDE_VOID_FALL_ID =
-            ResourceLocation.parse("dingdongji:stride_void_fall");
 
-    private static void handleTranscendiumStrideVoid(Player player) {
+
+        // ========================================================================
+    //  超限合金全套：偏执（根据已有魔咒的等级提升护甲值和盔甲韧性）
+    // ========================================================================
+    // 偏执已移至 ModEvents.onItemAttributeModifier（ItemAttributeModifierEvent 方式，
+    // 每次属性计算时动态添加，附魔变化自动触发重算）
+
+    // ========================================================================
+    //  超限合金靴子：蹈虚（飘升机增强后可通过按键开启创造飞行）
+    // ========================================================================
+    private static final Map<UUID, Boolean> IONOCRAFT_FLYING = new HashMap<>();
+
+    private static final float DEFAULT_FLY_SPEED = 0.05f;
+    private static final float BOOSTED_FLY_SPEED = 0.1f;   // 飘升机+增强靴子 = 2倍飞行速度
+    private static final Map<UUID, Boolean> IONOCRAFT_SPEED_BOOSTED = new HashMap<>();
+
+    private static void handleTranscendiumBootsFlight(Player player) {
         ItemStack boots = player.getItemBySlot(EquipmentSlot.FEET);
         boolean wearingBoots = boots.is(ModItems.TRANSCENDIUM_BOOTS.get());
         UUID uuid = player.getUUID();
 
-        AttributeInstance gravityAttr = player.getAttribute(Attributes.GRAVITY);
-        AttributeInstance fallAttr = player.getAttribute(Attributes.FALL_DAMAGE_MULTIPLIER);
+        // 超限合金靴子：永久免疫摔落伤害（穿靴子时无论何种方式摔落都不受伤）
+        if (wearingBoots) {
+            player.fallDistance = 0;
+        }
 
         if (!wearingBoots) {
-            if (gravityAttr != null) gravityAttr.removeModifier(STRIDE_VOID_GRAVITY_ID);
-            if (fallAttr != null) fallAttr.removeModifier(STRIDE_VOID_FALL_ID);
-            STRIDE_VOID_MODE.remove(uuid);
+            // 脱下超限靴子：清理本 mod 的蹈虚/加速状态
+            IONOCRAFT_FLYING.remove(uuid);
+            IONOCRAFT_SPEED_BOOSTED.remove(uuid);
+            boolean needUpdate = false;
+            // 只要飞行速度仍等于本 mod 的加速值(0.1)就还原为默认(0.05)。
+            // 不受创造模式限制（否则创造模式下脱靴速度残留翻倍）；
+            // 飘升机是独立载具、不使用 flyingSpeed，因此不会误伤飘升机的正常速度。
+            if (Math.abs(player.getAbilities().getFlyingSpeed() - BOOSTED_FLY_SPEED) < 1.0E-4f) {
+                player.getAbilities().setFlyingSpeed(DEFAULT_FLY_SPEED);
+                needUpdate = true;
+            }
+            if (!player.isCreative() && !player.isSpectator()) {
+                // 若背后/饰品栏有飘升机，保留飘升机自身的飞行能力，不关闭；否则关闭本 mod 开启的创造飞行
+                boolean hasIonocraft = !AnvilCraftCompat.getIonocraftBackpack(player).isEmpty();
+                if (!hasIonocraft) {
+                    if (player.getAbilities().mayfly) {
+                        player.getAbilities().mayfly = false;
+                        needUpdate = true;
+                    }
+                    if (player.getAbilities().flying) {
+                        player.getAbilities().flying = false;
+                        needUpdate = true;
+                    }
+                }
+            }
+            if (needUpdate) {
+                player.onUpdateAbilities();
+            }
+            syncIonocraftFlyingState(player, false);
             return;
         }
 
-        // ===== 常驻效果：摔落伤害归零 =====
-        if (fallAttr != null) {
-            fallAttr.removeModifier(STRIDE_VOID_FALL_ID);
-            fallAttr.addTransientModifier(
-                    new AttributeModifier(STRIDE_VOID_FALL_ID, -1.0, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL)
-            );
+        boolean shouldFly = IONOCRAFT_FLYING.getOrDefault(uuid, false);
+        boolean isCreative = player.isCreative();
+        boolean isSpectator = player.isSpectator();
+        // 飘升机是否有电（有电时由飘升机自身供能/出粒子，蹈虚作为速度增强）
+        boolean hasIonocraft = AnvilCraftCompat.hasActiveIonocraftBackpack(player);
+
+        // ====== 飘升机没电 + 蹈虚未开启 + 玩家仍处飞行状态（飘升机刚耗尽电量）→ 蹈虚自动接管 ======
+        // 不关闭创造飞行状态，将创造飞行灵活转移至蹈虚上；粒子随之切到蹈虚。
+        if (!hasIonocraft && !shouldFly && !isCreative && !isSpectator
+                && (player.getAbilities().flying || player.getAbilities().mayfly)) {
+            IONOCRAFT_FLYING.put(uuid, true);
+            shouldFly = true;
         }
 
-        // 双击潜行检测已移除，改为键位切换（见 toggleStrideVoid）
+        // 决定是否允许创造飞行：蹈虚开启 或 飘升机有电（两者任一供能则保持 mayfly）
+        boolean wantFly = shouldFly || hasIonocraft;
+        if (wantFly && !player.getAbilities().mayfly) {
+            player.getAbilities().mayfly = true;
+            player.onUpdateAbilities();
+        } else if (!wantFly && player.getAbilities().mayfly && !isCreative) {
+            player.getAbilities().mayfly = false;
+            player.getAbilities().flying = false;
+            player.getAbilities().setFlyingSpeed(DEFAULT_FLY_SPEED);
+            player.onUpdateAbilities();
+        }
 
-        // ===== 无重力模式时持续保持不掉落 =====
-        if (STRIDE_VOID_MODE.getOrDefault(uuid, 0) == 1) {
-            Vec3 motion = player.getDeltaMovement();
-            if (motion.y < 0) {
-                player.setDeltaMovement(motion.x, 0, motion.z);
+        // ====== 飞行状态同步（复刻飘升机：广播蹈虚飞行状态到所有客户端）======
+        // 蹈虚粒子仅在「蹈虚开启 且 飘升机没电」时喷：
+        // 飘升机有电时用飘升机自身的粒子；关闭蹈虚时同样改用飘升机粒子。
+        boolean nowFlying = shouldFly && !hasIonocraft
+                && player.getAbilities().flying && !isCreative && !isSpectator;
+        syncIonocraftFlyingState(player, nowFlying);
+
+        // ====== 飞行速度提升：蹈虚开启 + 飘升机有电 = 2倍 ======
+        if (shouldFly && player.getAbilities().flying) {
+            boolean wasBoosted = IONOCRAFT_SPEED_BOOSTED.getOrDefault(uuid, false);
+
+            if (hasIonocraft && !wasBoosted) {
+                player.getAbilities().setFlyingSpeed(BOOSTED_FLY_SPEED);
+                player.onUpdateAbilities();
+                IONOCRAFT_SPEED_BOOSTED.put(uuid, true);
+            } else if (!hasIonocraft && wasBoosted) {
+                player.getAbilities().setFlyingSpeed(DEFAULT_FLY_SPEED);
+                player.onUpdateAbilities();
+                IONOCRAFT_SPEED_BOOSTED.put(uuid, false);
             }
-            player.fallDistance = 0;
+        } else {
+            if (IONOCRAFT_SPEED_BOOSTED.getOrDefault(uuid, false)) {
+                player.getAbilities().setFlyingSpeed(DEFAULT_FLY_SPEED);
+                player.onUpdateAbilities();
+                IONOCRAFT_SPEED_BOOSTED.put(uuid, false);
+            }
         }
     }
 
+    private static final Map<UUID, Boolean> IONOCRAFT_FLYING_SYNC = new HashMap<>();
+    // 记录上次广播时刻，用于周期性重发（解决跨维度/新进入视野时收不到状态包的问题）
+    private static final Map<UUID, Integer> IONOCRAFT_SYNC_LAST_TICK = new HashMap<>();
+    private static final int IONOCRAFT_SYNC_INTERVAL = 20; // 每20tick(1秒)重发一次
+
     /**
-     * 蹈虚键位切换（由网络包调用）。
-     * 循环切换重力模式：正常 → 无重力 → 低重力 → 反重力 → 正常
+     * 复刻飘升机：服务端检测蹈虚飞行状态变化，广播 IonocraftBootsFlyingPacket 给追踪玩家。
+     * 状态变化时立即广播；持续飞行时周期性重发，确保跨维度/新进入视野的玩家也能收到。
      */
-    public static void toggleStrideVoid(ServerPlayer player) {
+    private static void syncIonocraftFlyingState(Player player, boolean nowFlying) {
+        if (!(player instanceof ServerPlayer serverPlayer)) return;
+        UUID uuid = player.getUUID();
+        int tick = serverPlayer.getServer() != null ? serverPlayer.getServer().getTickCount() : 0;
+        Boolean prev = IONOCRAFT_FLYING_SYNC.put(uuid, nowFlying);
+        Integer lastTick = IONOCRAFT_SYNC_LAST_TICK.get(uuid);
+
+        if (prev == null || prev != nowFlying) {
+            // 状态变化：立即广播
+            IONOCRAFT_SYNC_LAST_TICK.put(uuid, tick);
+            PacketDistributor.sendToPlayersTrackingEntity(
+                    serverPlayer,
+                    new IonocraftBootsFlyingPacket(serverPlayer.getId(), nowFlying)
+            );
+        } else if (nowFlying && (lastTick == null || tick - lastTick >= IONOCRAFT_SYNC_INTERVAL)) {
+            // 持续飞行：周期性重发，保证新客户端能收到
+            IONOCRAFT_SYNC_LAST_TICK.put(uuid, tick);
+            PacketDistributor.sendToPlayersTrackingEntity(
+                    serverPlayer,
+                    new IonocraftBootsFlyingPacket(serverPlayer.getId(), true)
+            );
+        }
+    }
+
+    public static void toggleIonocraftFlight(ServerPlayer player) {
         ItemStack boots = player.getItemBySlot(EquipmentSlot.FEET);
         if (!boots.is(ModItems.TRANSCENDIUM_BOOTS.get())) {
-            player.displayClientMessage(
-                    Component.literal("[叮咚叽] 未穿戴超限合金靴子，无法切换蹈虚").withStyle(ChatFormatting.RED),
-                    true
-            );
             return;
         }
 
         UUID uuid = player.getUUID();
-        int mode = STRIDE_VOID_MODE.getOrDefault(uuid, 0);
-        mode = (mode + 1) % 4;
-        STRIDE_VOID_MODE.put(uuid, mode);
+        boolean nowFlying = !IONOCRAFT_FLYING.getOrDefault(uuid, false);
+        IONOCRAFT_FLYING.put(uuid, nowFlying);
 
-        AttributeInstance gravityAttr = player.getAttribute(Attributes.GRAVITY);
-
-        // 先清除旧的重力修饰符
-        if (gravityAttr != null) gravityAttr.removeModifier(STRIDE_VOID_GRAVITY_ID);
-
-        Component msg;
-        if (mode == 0) {
-            // 正常重力
-            player.removeEffect(MobEffects.LEVITATION);
-            msg = Component.literal("蹈虚：正常重力").withStyle(ChatFormatting.RED);
-        } else if (mode == 1) {
-            // 无重力
-            if (gravityAttr != null) {
-                gravityAttr.addTransientModifier(
-                        new AttributeModifier(STRIDE_VOID_GRAVITY_ID, -0.08, AttributeModifier.Operation.ADD_VALUE)
-                );
-            }
-            msg = Component.literal("蹈虚：无重力").withStyle(ChatFormatting.GREEN);
-            Vec3 motion = player.getDeltaMovement();
-            if (motion.y < 0) {
-                player.setDeltaMovement(motion.x, 0, motion.z);
-            }
-            player.fallDistance = 0;
-        } else if (mode == 2) {
-            // 低重力
-            if (gravityAttr != null) {
-                gravityAttr.addTransientModifier(
-                        new AttributeModifier(STRIDE_VOID_GRAVITY_ID, -0.07, AttributeModifier.Operation.ADD_VALUE)
-                );
-            }
-            msg = Component.literal("蹈虚：低重力").withStyle(ChatFormatting.YELLOW);
+        if (nowFlying) {
+            player.getAbilities().mayfly = true;
+            player.getAbilities().flying = true;
         } else {
-            // 反重力：漂浮 II
-            player.addEffect(new MobEffectInstance(MobEffects.LEVITATION, 6000, 1, false, false, false));
-            msg = Component.literal("蹈虚：反重力").withStyle(ChatFormatting.AQUA);
+            // 若背后/饰品栏有飘升机，保留飘升机自身的飞行能力，仅关闭本 mod 的加速
+            boolean hasIonocraft = AnvilCraftCompat.hasActiveIonocraftBackpack(player);
+            if (!hasIonocraft) {
+                player.getAbilities().mayfly = false;
+                player.getAbilities().flying = false;
+            }
+            player.getAbilities().setFlyingSpeed(DEFAULT_FLY_SPEED);
+            IONOCRAFT_SPEED_BOOSTED.put(uuid, false);
         }
-        player.displayClientMessage(msg, true);
+        player.onUpdateAbilities();
+
+        player.displayClientMessage(
+                Component.literal("\u8E48\u865A\uFF1A" + (nowFlying ? "\u00a7a\u5F00\u542F\u98DE\u884C" : "\u00a7c\u5173\u95ED\u98DE\u884C")),
+                true
+        );
     }
 
-
-
-
-    // ========================================================================
+// ========================================================================
     //  铁砧工艺组件赋予
     // ========================================================================
 
-    /** 玩家登录时：扫描背包中所有物品，补齐组件 */
+    /** 玩家登录时：恢复按键状态 */
     @SubscribeEvent
     public static void onPlayerLogin(net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent event) {
         Player player = event.getEntity();
         if (player.level().isClientSide) return;
-        if (!AnvilCraftCompat.isLoaded()) return;
 
-        LOGGER.info("玩家 {} 登录，扫描背包补齐 AnvilCraft 组件", player.getName().getString());
-
-        for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
-            ItemStack stack = player.getInventory().getItem(i);
-            if (stack.isEmpty()) continue;
-            applyAnvilCraftComponent(stack);
-        }
+        // 恢复按键状态（夜视/高亮/蹈火/舒适/中子屏障/蹈虚模式）
+        loadToggleStates(player);
+        // tick 续期会在下一个 tick 自动根据 HELMET_MODE 恢复夜视效果
     }
 
-    /** 装备变更时：为换上的装备补齐组件 */
+    /** 装备变更时：只补齐铁砧工艺组件（旧版逻辑，完全不碰效果）*/
     @SubscribeEvent
     public static void onEquipmentChange(LivingEquipmentChangeEvent event) {
         if (!(event.getEntity() instanceof Player player)) return;
         if (player.level().isClientSide) return;
-        if (!AnvilCraftCompat.isLoaded()) return;
 
+        if (!AnvilCraftCompat.isLoaded()) return;
         ItemStack to = event.getTo();
         if (to.isEmpty()) return;
-
         applyAnvilCraftComponent(to);
     }
 
@@ -796,6 +1231,32 @@ public class ModArmorSetHandler {
                 || source.is(DamageTypes.BAD_RESPAWN_POINT)) {
             event.getContainer().setNewDamage(0.0f);
         }
+    }
+
+    // ========================================================================
+    //  按键状态持久化（跨游戏会话保存）
+    // ========================================================================
+
+    private static void saveToggleStates(Player player) {
+        var data = player.getPersistentData();
+        UUID uuid = player.getUUID();
+        data.putBoolean("dingdongji:glowing_vision", GLOWING_VISION_ENABLED.getOrDefault(uuid, false));
+        data.putInt("dingdongji:helmet_mode", HELMET_MODE.getOrDefault(uuid, 0));
+        data.putBoolean("dingdongji:lava_walker", LAVA_WALKER_ENABLED.getOrDefault(uuid, false));
+        data.putBoolean("dingdongji:comfortable", COMFORTABLE_ENABLED.getOrDefault(uuid, false));
+        data.putInt("dingdongji:neutron_barrier", NEUTRON_BARRIER_ENABLED.getOrDefault(uuid, 0));
+
+    }
+
+    private static void loadToggleStates(Player player) {
+        var data = player.getPersistentData();
+        UUID uuid = player.getUUID();
+        GLOWING_VISION_ENABLED.put(uuid, data.getBoolean("dingdongji:glowing_vision"));
+        HELMET_MODE.put(uuid, data.getInt("dingdongji:helmet_mode"));
+        LAVA_WALKER_ENABLED.put(uuid, data.getBoolean("dingdongji:lava_walker"));
+        COMFORTABLE_ENABLED.put(uuid, data.getBoolean("dingdongji:comfortable"));
+        NEUTRON_BARRIER_ENABLED.put(uuid, data.getInt("dingdongji:neutron_barrier"));
+
     }
 
     private static void applyAnvilCraftComponent(ItemStack stack) {

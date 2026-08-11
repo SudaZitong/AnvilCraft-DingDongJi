@@ -1,0 +1,43 @@
+{
+  "type": "anvilcraft:special_celestial_body",
+  "name": "krypton.golden_ji_planet",
+  "time": 16,
+  "space": 10,
+  "mass": 32,
+  "energy": 16,
+  "seed_items": [
+    "dingdongji:keji_block"
+  ],
+  "model": "dingdongji:block/celestial_body/golden_ji_planet",
+  "needs_custom_model": true,
+  "has_atmosphere": false,
+  "liquid_coverage": "none",
+  "magnetic_field": 0,
+  "rotation_speed": 2,
+  "axial_tilt": 10,
+  "resources": {
+    "minerals": [
+      {
+        "id": "minecraft:gold_block",
+        "weight": 70
+      },
+      {
+        "id": "minecraft:gold_ingot",
+        "weight": 30
+      },
+      {
+        "id": "minecraft:golden_apple",
+        "weight": 10
+      },
+      {
+        "id": "minecraft:golden_carrot",
+        "weight": 20
+      },
+      {
+        "id": "minecraft:enchanted_golden_apple",
+        "weight": 1
+      }
+    ],
+    "fluids": []
+  }
+}

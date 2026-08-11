@@ -2,6 +2,10 @@
   "values": [
     "minecraft:golden_chestplate",
     "minecraft:iron_chestplate",
-    "minecraft:diamond_chestplate"
+    "minecraft:diamond_chestplate",
+    {
+      "id": "anvilcraft_alloyextension:steel_chestplate",
+      "required": false
+    }
   ]
 }

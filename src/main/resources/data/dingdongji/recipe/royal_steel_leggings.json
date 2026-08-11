@@ -4,7 +4,7 @@
     "tag": "dingdongji:royal_steel_leggings_base"
   },
   "addition": {
-    "item": "anvilcraft:royal_steel_block"
+    "item": "anvilcraft:royal_steel_ingot"
   },
   "template": {
     "item": "anvilcraft:royal_steel_upgrade_smithing_template"

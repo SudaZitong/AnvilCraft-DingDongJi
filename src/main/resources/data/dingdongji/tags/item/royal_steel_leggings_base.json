@@ -2,6 +2,10 @@
   "values": [
     "minecraft:golden_leggings",
     "minecraft:iron_leggings",
-    "minecraft:diamond_leggings"
+    "minecraft:diamond_leggings",
+    {
+      "id": "anvilcraft_alloyextension:steel_leggings",
+      "required": false
+    }
   ]
 }

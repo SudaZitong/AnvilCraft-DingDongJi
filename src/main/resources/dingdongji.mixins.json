@@ -6,7 +6,28 @@
   "mixins": [
     "AnvilBlockMixin",
     "SmithingMenuMixin",
-    "SmithingTransformRecipeMixin"
+    "SmithingTransformRecipeMixin",
+    "ChainSmithingMenuMixin",
+    "BaseMultipleToOneSmithingRecipeMixin",
+    "EmberSmithingMenuMixin",
+    "FrostSmithingMenuMixin",
+    "ItemStackMixin",
+    "PermutationRecipeMixin",
+    "DeformationRecipeMixin",
+    "FallingBlockEntityMixin",
+    "RangedAttributeMixin",
+    "GravityManagerMixin",
+    "MixinAdjacentSmithingMenu",
+    "MixinTranscendenceSmithingMenu",
+    "MixinSmithingTemplateUsable",
+    "MixinLivingEntityHurt",
+    "MixinFireImmunityEntity"
+  ],
+  "client": [
+    "AdjacentSmithingScreenMixin",
+    "TranscendenceSmithingScreenMixin",
+    "MixinLavaVision",
+    "MixinFireOverlay"
   ],
   "injectors": {
     "defaultRequire": 0

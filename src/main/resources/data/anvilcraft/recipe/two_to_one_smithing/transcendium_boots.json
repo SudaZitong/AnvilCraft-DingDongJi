@@ -1,0 +1,35 @@
+{
+  "type": "anvilcraft:two_to_one_smithing",
+  "inputs": [
+    {
+      "items": "dingdongji:ember_metal_boots"
+    },
+    {
+      "items": "dingdongji:frost_metal_boots"
+    }
+  ],
+  "material": {
+    "items": "anvilcraft:multiphase_transcendium"
+  },
+  "modifiers": [
+    {
+      "type": "anvilcraft:merge_data",
+      "types": [
+        {
+          "type": "anvilcraft:item_enchantments",
+          "component": "minecraft:enchantments",
+          "input": "input.0"
+        },
+        {
+          "type": "anvilcraft:item_enchantments",
+          "component": "minecraft:enchantments",
+          "input": "input.1"
+        }
+      ]
+    }
+  ],
+  "result": "dingdongji:transcendium_boots",
+  "template": {
+    "items": "anvilcraft:two_to_one_smithing_template"
+  }
+}

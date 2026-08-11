@@ -1,0 +1,35 @@
+{
+  "type": "anvilcraft:two_to_one_smithing",
+  "inputs": [
+    {
+      "items": "dingdongji:ember_metal_helmet"
+    },
+    {
+      "items": "dingdongji:frost_metal_helmet"
+    }
+  ],
+  "material": {
+    "items": "anvilcraft:multiphase_transcendium"
+  },
+  "modifiers": [
+    {
+      "type": "anvilcraft:merge_data",
+      "types": [
+        {
+          "type": "anvilcraft:item_enchantments",
+          "component": "minecraft:enchantments",
+          "input": "input.0"
+        },
+        {
+          "type": "anvilcraft:item_enchantments",
+          "component": "minecraft:enchantments",
+          "input": "input.1"
+        }
+      ]
+    }
+  ],
+  "result": "dingdongji:transcendium_helmet",
+  "template": {
+    "items": "anvilcraft:two_to_one_smithing_template"
+  }
+}

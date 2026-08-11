@@ -1,9 +1,9 @@
 {
 	"textures": {
-		"0": "dingdongji:block/kejis",
-		"1": "dingdongji:block/another",
-		"2": "dingdongji:block/another2",
-		"particle": "dingdongji:block/another2"
+		"0": "dingdongji:block/keji_block",
+		"1": "dingdongji:block/keji_block_1",
+		"2": "dingdongji:block/keji_block_2",
+		"particle": "dingdongji:block/keji_block_1"
 	},
 	"elements": [
 		{

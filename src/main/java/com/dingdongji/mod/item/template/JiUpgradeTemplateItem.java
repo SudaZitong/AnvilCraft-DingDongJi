@@ -27,11 +27,11 @@ public class JiUpgradeTemplateItem extends SmithingTemplateItem {
             "screen.dingdongji.smithing_template.ji_upgrade.additions_slot_description");
 
     private static final ResourceLocation EMPTY_SLOT_SWORD =
-            ResourceLocation.fromNamespaceAndPath("anvilcraft", "item/empty_slot_sword");
+            ResourceLocation.fromNamespaceAndPath("minecraft", "item/empty_slot_sword");
     private static final ResourceLocation EMPTY_SLOT_PICKAXE =
-            ResourceLocation.fromNamespaceAndPath("anvilcraft", "item/empty_slot_pickaxe");
+            ResourceLocation.fromNamespaceAndPath("minecraft", "item/empty_slot_pickaxe");
     private static final ResourceLocation EMPTY_SLOT_INGOT =
-            ResourceLocation.fromNamespaceAndPath("anvilcraft", "item/empty_slot_ingot");
+            ResourceLocation.fromNamespaceAndPath("minecraft", "item/empty_slot_ingot");
 
     public JiUpgradeTemplateItem(Properties properties) {
         super(

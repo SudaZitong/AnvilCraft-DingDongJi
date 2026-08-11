@@ -1,6 +1,10 @@
 package com.dingdongji.mod;
 
+import com.dingdongji.mod.init.ModParticles;
+
 import com.dingdongji.mod.block.ModBlocks;
+import com.dingdongji.mod.client.screen.JiAnvilScreen;
+import com.dingdongji.mod.inventory.JiAnvilMenu;
 import com.dingdongji.mod.event.ModArmorSetHandler;
 import com.dingdongji.mod.event.ModEvents;
 import com.dingdongji.mod.event.ModRecipeHandler;
@@ -12,9 +16,13 @@ import com.dingdongji.mod.input.ModKeyBindings;
 import com.dingdongji.mod.network.ModNetwork;
 import com.dingdongji.mod.tab.ModCreativeTab;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.inventory.MenuType;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.common.NeoForge;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Mod(KryptonMod.MODID)
 public class KryptonMod {
@@ -26,6 +34,7 @@ public class KryptonMod {
 
     public KryptonMod(IEventBus modEventBus) {
         ModBlocks.BLOCKS.register(modEventBus);
+        ModParticles.PARTICLES.register(modEventBus);
         ModItems.ITEMS.register(modEventBus);
         ModComponents.COMPONENTS.register(modEventBus);
         ModArmorMaterials.ARMOR_MATERIALS.register(modEventBus);
@@ -37,9 +46,20 @@ public class KryptonMod {
         // MOD 总线事件
         modEventBus.addListener(ModifyDefaultComponentsHandler::onModifyDefaultComponents);
         modEventBus.addListener(ModKeyBindings::registerKeyMappings);
+        modEventBus.addListener(com.dingdongji.mod.client.ClientSetupHandler::onClientSetup);
+        modEventBus.addListener(com.dingdongji.mod.client.ClientSetupHandler::registerParticleProviders);
+
+        // ===== 注册叽砧 Screen =====
+        modEventBus.addListener((RegisterMenuScreensEvent event) -> {
+            @SuppressWarnings("unchecked")
+            MenuType<JiAnvilMenu> type = (MenuType<JiAnvilMenu>) ModMenuTypes.JI_ANVIL.get();
+            event.register(type, JiAnvilScreen::new);
+        });
+
+
 
         // ===== 注册网络包 =====
-        ModNetwork.register();
+        modEventBus.addListener(ModNetwork::register);
 
         // GAME 总线事件
         var gameBus = NeoForge.EVENT_BUS;

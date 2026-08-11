@@ -17,7 +17,9 @@ import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.AnvilBlock;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Fallable;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.entity.item.FallingBlockEntity;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
@@ -73,6 +75,17 @@ public class JiAnvilBlock extends AnvilBlock {
 
     @Override
     public void appendHoverText(ItemStack stack, Item.TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
-        tooltip.add(Component.literal("正常附魔时翻倍所需经验，但有10%概率翻倍附魔").setStyle(GOLD_STYLE));
+        tooltip.add(Component.translatable(
+                "tooltip.dingdongji.ji_anvil.desc"
+        ).setStyle(GOLD_STYLE));
+    }
+
+    /**
+     * 覆写 onLand 以静默铁砧落地音效。
+     * 鸡叫声由 FallingBlockEntityMixin 播放，这里不做任何事。
+     */
+    @Override
+    public void onLand(Level level, BlockPos pos, BlockState state, BlockState replacedState, FallingBlockEntity entity) {
+        // 不调用 super.onLand()，避免播放铁砧落地音效
     }
 }

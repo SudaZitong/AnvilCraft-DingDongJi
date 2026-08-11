@@ -12,7 +12,7 @@ base {
 }
 
 group = 'com.dingdongji'
-version = '0.0.1'
+version = '0.0.6'
 
 repositories {
     mavenLocal()
@@ -22,8 +22,9 @@ repositories {
 
 dependencies {
     implementation "net.neoforged:neoforge:${neo_version}"
+    // 铁砧工艺（AnvilCraft）：编译期引用其锻造台/网络类
+    implementation files('libs/anvilcraft-1.6.0-snapshot2127.jar')
 }
-
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'

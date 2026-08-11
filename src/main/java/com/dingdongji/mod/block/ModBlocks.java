@@ -15,12 +15,15 @@ public class ModBlocks {
     public static final DeferredRegister.Blocks BLOCKS =
             DeferredRegister.createBlocks(KryptonMod.MODID);
 
+    /** 叽砧音效：使用原版铁砧音效，仅下落坠地音效由 Mixin 改为鸡叫 */
+    private static final SoundType JI_ANVIL_SOUND_TYPE = SoundType.ANVIL;
+
     public static final DeferredBlock<JiAnvilBlock> JI_ANVIL =
             BLOCKS.register("ji_anvil",
                     () -> new JiAnvilBlock(BlockBehaviour.Properties.of()
                             .strength(5.0f, 1200.0f)
                             .requiresCorrectToolForDrops()
-                            .sound(SoundType.ANVIL)
+                            .sound(JI_ANVIL_SOUND_TYPE)
                             .noOcclusion()
                     )
             );

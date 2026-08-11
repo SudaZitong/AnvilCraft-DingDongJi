@@ -30,6 +30,7 @@ public class ModItems {
             ITEMS.register("create_template",
                     () -> new com.dingdongji.mod.item.template.CreateTemplateItem(
                             new Item.Properties().stacksTo(1).rarity(net.minecraft.world.item.Rarity.EPIC).fireResistant()
+                                    .component(ModComponents.CREATE_TEMPLATE_MODE.get(), com.dingdongji.mod.item.component.CreateTemplateMode.DEFAULT)
                     )
             );
 
@@ -161,6 +162,44 @@ public class ModItems {
 
     // ===== 盔甲：余烬金属套 =====
 
+    public static final DeferredItem<ArmorItem> FROST_METAL_HELMET =
+            ITEMS.register("frost_metal_helmet",
+                    () -> new ArmorItem(ModArmorMaterials.holder(ModArmorMaterials.FROST_METAL), ArmorItem.Type.HELMET,
+                            new Item.Properties()
+                                    .durability(ArmorItem.Type.HELMET.getDurability(33))
+                                    .component(ModComponents.MEANINGLESS.get(), MeaninglessComponent.DEFAULT)
+                    )
+            );
+
+    public static final DeferredItem<ArmorItem> FROST_METAL_CHESTPLATE =
+            ITEMS.register("frost_metal_chestplate",
+                    () -> new ArmorItem(ModArmorMaterials.holder(ModArmorMaterials.FROST_METAL), ArmorItem.Type.CHESTPLATE,
+                            new Item.Properties()
+                                    .durability(ArmorItem.Type.CHESTPLATE.getDurability(33))
+                                    .component(ModComponents.MEANINGLESS.get(), MeaninglessComponent.DEFAULT)
+                    )
+            );
+
+    public static final DeferredItem<ArmorItem> FROST_METAL_LEGGINGS =
+            ITEMS.register("frost_metal_leggings",
+                    () -> new ArmorItem(ModArmorMaterials.holder(ModArmorMaterials.FROST_METAL), ArmorItem.Type.LEGGINGS,
+                            new Item.Properties()
+                                    .durability(ArmorItem.Type.LEGGINGS.getDurability(33))
+                                    .component(ModComponents.MEANINGLESS.get(), MeaninglessComponent.DEFAULT)
+                    )
+            );
+
+    public static final DeferredItem<ArmorItem> FROST_METAL_BOOTS =
+            ITEMS.register("frost_metal_boots",
+                    () -> new FrostMetalBootsItem(ModArmorMaterials.holder(ModArmorMaterials.FROST_METAL), ArmorItem.Type.BOOTS,
+                            new Item.Properties()
+                                    .durability(ArmorItem.Type.BOOTS.getDurability(33))
+                                    .component(ModComponents.MEANINGLESS.get(), MeaninglessComponent.DEFAULT)
+                    )
+            );
+
+    // ===== 盔甲：超限合金套 =====
+
     public static final DeferredItem<ArmorItem> EMBER_METAL_HELMET =
             ITEMS.register("ember_metal_helmet",
                     () -> new ArmorItem(ModArmorMaterials.holder(ModArmorMaterials.EMBER_METAL), ArmorItem.Type.HELMET,
@@ -201,7 +240,7 @@ public class ModItems {
                     )
             );
 
-    // ===== 盔甲：超限合金套 =====
+    // ===== 盔甲：浮霜金属套 =====
 
     public static final DeferredItem<ArmorItem> TRANSCENDIUM_HELMET =
             ITEMS.register("transcendium_helmet",
@@ -209,6 +248,7 @@ public class ModItems {
                             new Item.Properties()
                                     .durability(ArmorItem.Type.HELMET.getDurability(407))
                                     .fireResistant()
+                                    .rarity(net.minecraft.world.item.Rarity.EPIC)
                                     .component(ModComponents.GLOWING_VISION.get(), GlowingVisionComponent.DEFAULT)
                     )
             );
@@ -219,6 +259,7 @@ public class ModItems {
                             new Item.Properties()
                                     .durability(ArmorItem.Type.CHESTPLATE.getDurability(407))
                                     .fireResistant()
+                                    .rarity(net.minecraft.world.item.Rarity.EPIC)
                                     .component(ModComponents.BARRIER_II.get(), BarrierIIComponent.INSTANCE)
                     )
             );
@@ -229,6 +270,7 @@ public class ModItems {
                             new Item.Properties()
                                     .durability(ArmorItem.Type.LEGGINGS.getDurability(407))
                                     .fireResistant()
+                                    .rarity(net.minecraft.world.item.Rarity.EPIC)
                                     .component(ModComponents.NEUTRON_BARRIER.get(), NeutronBarrierComponent.INSTANCE)
                     )
             );
@@ -239,7 +281,7 @@ public class ModItems {
                             new Item.Properties()
                                     .durability(ArmorItem.Type.BOOTS.getDurability(407))
                                     .fireResistant()
-                                    .component(ModComponents.STRIDE_VOID.get(), StrideVoidComponent.INSTANCE)
+                                    .rarity(net.minecraft.world.item.Rarity.EPIC)
                     )
             );
 

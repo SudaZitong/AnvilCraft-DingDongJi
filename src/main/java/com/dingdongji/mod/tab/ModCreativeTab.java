@@ -38,6 +38,11 @@ public class ModCreativeTab {
                         output.accept(ModItems.ROYAL_STEEL_CHESTPLATE.get());
                         output.accept(ModItems.ROYAL_STEEL_LEGGINGS.get());
                         output.accept(ModItems.ROYAL_STEEL_BOOTS.get());
+                        // 盔甲 - 浮霜金属套
+                        output.accept(ModItems.FROST_METAL_HELMET.get());
+                        output.accept(ModItems.FROST_METAL_CHESTPLATE.get());
+                        output.accept(ModItems.FROST_METAL_LEGGINGS.get());
+                        output.accept(ModItems.FROST_METAL_BOOTS.get());
                         // 盔甲 - 余烬金属套
                         output.accept(ModItems.EMBER_METAL_HELMET.get());
                         output.accept(ModItems.EMBER_METAL_CHESTPLATE.get());

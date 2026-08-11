@@ -1,0 +1,15 @@
+{
+  "type": "minecraft:smithing_transform",
+  "template": {
+    "item": "anvilcraft:frost_metal_upgrade_smithing_template"
+  },
+  "base": {
+    "item": "dingdongji:royal_steel_leggings"
+  },
+  "addition": {
+    "item": "anvilcraft:frost_metal_ingot"
+  },
+  "result": {
+    "id": "dingdongji:frost_metal_leggings"
+  }
+}

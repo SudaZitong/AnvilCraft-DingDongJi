@@ -5,7 +5,7 @@ import io.netty.buffer.ByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 
 /**
- * 隔热组件 - 余烬头盔：隔绝高温环境带来的灼烧
+ * 赴汤组件 - 余烬头盔：隔绝高温环境带来的灼烧
  */
 public record HeatInsulationComponent() {
     public static final HeatInsulationComponent INSTANCE = new HeatInsulationComponent();

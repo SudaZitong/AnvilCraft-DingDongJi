@@ -3,12 +3,12 @@ package com.dingdongji.mod.item;
 import com.dingdongji.mod.item.component.DevourData;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.component.Unbreakable;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Rarity;
 import net.minecraft.world.item.SwordItem;
 import net.minecraft.world.item.Tiers;
-import net.minecraft.world.item.component.Unbreakable;
 
 public class BlackHoleSwordItem extends SwordItem {
     public BlackHoleSwordItem() {

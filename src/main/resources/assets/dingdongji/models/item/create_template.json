@@ -1,6 +1,38 @@
 {
   "parent": "item/generated",
   "textures": {
-    "layer0": "dingdongji:item/create_template"
-  }
+    "layer0": "dingdongji:item/create_template_alpha"
+  },
+  "overrides": [
+    {
+      "predicate": {
+        "dingdongji:mode": 1.0
+      },
+      "model": "dingdongji:item/create_template_beta"
+    },
+    {
+      "predicate": {
+        "dingdongji:mode": 2.0
+      },
+      "model": "dingdongji:item/create_template_gamma"
+    },
+    {
+      "predicate": {
+        "dingdongji:mode": 3.0
+      },
+      "model": "dingdongji:item/create_template_delta"
+    },
+    {
+      "predicate": {
+        "dingdongji:mode": 4.0
+      },
+      "model": "dingdongji:item/create_template_epsilon"
+    },
+    {
+      "predicate": {
+        "dingdongji:mode": 5.0
+      },
+      "model": "dingdongji:item/create_template_zeta"
+    }
+  ]
 }

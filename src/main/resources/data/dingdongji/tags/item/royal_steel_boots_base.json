@@ -2,6 +2,10 @@
   "values": [
     "minecraft:golden_boots",
     "minecraft:iron_boots",
-    "minecraft:diamond_boots"
+    "minecraft:diamond_boots",
+    {
+      "id": "anvilcraft_alloyextension:steel_boots",
+      "required": false
+    }
   ]
 }

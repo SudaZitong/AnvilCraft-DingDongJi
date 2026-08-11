@@ -85,6 +85,24 @@ public class ModArmorMaterials {
             )
     );
 
+    // ===== 浮霜金属盔甲（基础属性与余烬相同）=====
+    public static final DeferredHolder<ArmorMaterial, ArmorMaterial> FROST_METAL = ARMOR_MATERIALS.register("frost_metal",
+            () -> new ArmorMaterial(
+                    Util.make(new EnumMap<>(ArmorItem.Type.class), map -> {
+                        map.put(ArmorItem.Type.HELMET, 3);
+                        map.put(ArmorItem.Type.CHESTPLATE, 8);
+                        map.put(ArmorItem.Type.LEGGINGS, 6);
+                        map.put(ArmorItem.Type.BOOTS, 3);
+                    }),
+                    15,
+                    SoundEvents.ARMOR_EQUIP_NETHERITE,
+                    () -> anvilCraftItem("frost_metal_ingot"),
+                    List.of(new ArmorMaterial.Layer(KryptonMod.modLoc("frost_metal"))),
+                    3.0f,
+                    0.1f
+            )
+    );
+
     // ===== 超限合金盔甲 =====
     public static final DeferredHolder<ArmorMaterial, ArmorMaterial> TRANSCENDIUM = ARMOR_MATERIALS.register("transcendium",
             () -> new ArmorMaterial(

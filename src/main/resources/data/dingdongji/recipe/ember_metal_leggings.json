@@ -4,7 +4,7 @@
     "tag": "dingdongji:ember_metal_leggings_base"
   },
   "addition": {
-    "item": "anvilcraft:ember_metal_block"
+    "item": "anvilcraft:ember_metal_ingot"
   },
   "template": {
     "item": "anvilcraft:ember_metal_upgrade_smithing_template"
