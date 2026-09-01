@@ -65,7 +65,7 @@ public class ModNetwork {
         }
     }
 
-    // ===== 中子屏障切换处理器 =====
+    // ===== 中子屏罩切换处理器 =====
     public static class NeutronBarrierToggleHandler implements IPayloadHandler<NeutronBarrierTogglePacket> {
         @Override
         public void handle(NeutronBarrierTogglePacket packet, IPayloadContext context) {

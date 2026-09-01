@@ -21,7 +21,8 @@
     "MixinTranscendenceSmithingMenu",
     "MixinSmithingTemplateUsable",
     "MixinLivingEntityHurt",
-    "MixinFireImmunityEntity"
+    "MixinFireImmunityEntity",
+    "EntityCanTrampleMixin"
   ],
   "client": [
     "AdjacentSmithingScreenMixin",

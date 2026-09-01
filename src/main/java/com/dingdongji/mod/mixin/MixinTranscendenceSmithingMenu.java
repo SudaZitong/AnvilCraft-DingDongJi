@@ -5,7 +5,13 @@ import com.dingdongji.mod.item.ModItems;
 import com.dingdongji.mod.item.component.CreateTemplateMode;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.Container;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.RecipeHolder;
+import net.minecraft.world.item.crafting.RecipeInput;
+import net.minecraft.world.item.crafting.RecipeManager;
+import net.minecraft.world.item.crafting.RecipeType;
+import net.minecraft.world.level.Level;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.Unique;
@@ -15,6 +21,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -131,6 +138,65 @@ public abstract class MixinTranscendenceSmithingMenu {
             }
         } catch (Exception e) {
             // 静默
+        }
+    }
+
+    /**
+     * 超限锻造台 createFrostResult() 原用 `selectedTemplate.getItem() instanceof PermutationTemplateItem`
+     * 区分嬗变(Permutation)与形变(Deformation)分支。创造模板是 CreateTemplateItem（非该类型），
+     * 导致 ε(嬗变)/ζ(形变) 永远落入 Deformation 分支——ε 匹配不到 Permutation 配方无法合成。
+     *
+     * 这里用 @Inject HEAD cancellable 完整重写：创造模板 ε→走 Permutation 配方、ζ→走 Deformation
+     * 配方；其他情况（非创造模板或非浮霜模式）不 cancel，走原逻辑。
+     */
+    @Inject(method = "createFrostResult", at = @At("HEAD"), cancellable = true, remap = false)
+    private void ddj$createFrostResult(CallbackInfo ci) {
+        try {
+            Class<?> clazz = Class.forName("dev.dubhe.anvilcraft.inventory.TranscendenceSmithingMenu");
+
+            Field sf = clazz.getDeclaredField("selectedTemplate");
+            sf.setAccessible(true);
+            ItemStack sel = (ItemStack) sf.get(this);
+            if (sel == null || !ModItems.isCreateTemplate(sel)) return; // 非创造模板走原逻辑
+
+            CreateTemplateMode mode = sel.getOrDefault(
+                    ModComponents.CREATE_TEMPLATE_MODE.get(), CreateTemplateMode.DEFAULT);
+            boolean isPermutation = "epsilon".equals(mode.mode());
+            boolean isDeformation = "zeta".equals(mode.mode());
+            if (!isPermutation && !isDeformation) return; // 不涉及浮霜，走原逻辑
+
+            Field lf = clazz.getDeclaredField("level");
+            lf.setAccessible(true);
+            Level level = (Level) lf.get(this);
+            Field rf = clazz.getDeclaredField("royalFrostInputs");
+            rf.setAccessible(true);
+            Container inputs = (Container) rf.get(this);
+
+            // 构造 FrostSmithingRecipeInput(selectedTemplate, 输入1, 输入2)
+            Class<?> inputCls = Class.forName("dev.dubhe.anvilcraft.recipe.frost.FrostSmithingRecipeInput");
+            Object input = inputCls.getConstructor(ItemStack.class, ItemStack.class, ItemStack.class)
+                    .newInstance(sel, inputs.getItem(0), inputs.getItem(1));
+
+            Method setFrost = clazz.getDeclaredMethod("setFrostResult", RecipeHolder.class, inputCls);
+            setFrost.setAccessible(true);
+
+            Class<?> modRecipeTypes = Class.forName("dev.dubhe.anvilcraft.init.recipe.ModRecipeTypes");
+            Object holder = isPermutation
+                    ? modRecipeTypes.getField("PERMUTATION_TYPE").get(null)
+                    : modRecipeTypes.getField("DEFORMATION_TYPE").get(null);
+            Object type = holder.getClass().getMethod("get").invoke(holder);
+
+            RecipeManager rm = level.getRecipeManager();
+            Method getRecipesFor = RecipeManager.class.getMethod(
+                    "getRecipesFor", RecipeType.class, RecipeInput.class, Level.class);
+            @SuppressWarnings("rawtypes")
+            List matches = (List) getRecipesFor.invoke(rm, type, input, level);
+            if (!matches.isEmpty()) {
+                setFrost.invoke(this, matches.get(0), input);
+            }
+            ci.cancel();
+        } catch (Exception e) {
+            // 出错则走原逻辑（不 cancel）
         }
     }
 

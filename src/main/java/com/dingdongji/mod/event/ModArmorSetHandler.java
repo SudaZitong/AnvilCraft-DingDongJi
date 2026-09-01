@@ -85,7 +85,7 @@ public class ModArmorSetHandler {
     // ===== 舒适开关 =====
     private static final Map<UUID, Boolean> COMFORTABLE_ENABLED = new HashMap<>();
 
-    // ===== 中子屏障开关（默认关闭）=====
+    // ===== 中子屏罩开关（默认关闭）=====
     private static final Map<UUID, Integer> NEUTRON_BARRIER_ENABLED = new HashMap<>();
 
     // ===== Boss弹飞冷却 =====
@@ -205,9 +205,10 @@ public class ModArmorSetHandler {
                 );
             }
 
-            // 弹飞自身2格内的所有实体（力度3）
-            AABB knockbackArea = player.getBoundingBox().inflate(2.0);
+            // 弹飞自身3格内的所有实体（范围=护腿2+1=3；力度3=护腿1.5的2倍）
+            AABB knockbackArea = player.getBoundingBox().inflate(3.0);
             List<Entity> nearbyEntities = player.level().getEntities(player, knockbackArea, e -> e != player);
+            long gt = player.level().getGameTime();
             for (Entity entity : nearbyEntities) {
                 double dx = entity.getX() - player.getX();
                 double dz = entity.getZ() - player.getZ();
@@ -221,6 +222,10 @@ public class ModArmorSetHandler {
                 double forceZ = (dz / dist) * 3.0;
                 entity.setDeltaMovement(entity.getDeltaMovement().add(forceX, 0.4, forceZ));
                 entity.hurtMarked = true;
+
+                // 采用护腿排斥敌对生物的大号粒子（比护腿更大一点）
+                Vec3 knockDir = new Vec3(dx / dist, 0, dz / dist).normalize();
+                spawnRepelBurst(player, entity, knockDir, gt, true);
             }
 
             // 在脚边生成爆发粒子
@@ -769,13 +774,13 @@ public class ModArmorSetHandler {
 
         switch (state) {
             case 0 -> player.displayClientMessage(
-                    Component.literal("中子屏障：关闭屏蔽").withStyle(ChatFormatting.BLUE), true);
+                    Component.literal("中子屏罩：关闭屏蔽").withStyle(ChatFormatting.BLUE), true);
             case 1 -> player.displayClientMessage(
-                    Component.literal("中子屏障：屏蔽敌对生物").withStyle(ChatFormatting.GREEN), true);
+                    Component.literal("中子屏罩：屏蔽敌对生物").withStyle(ChatFormatting.GREEN), true);
             case 2 -> player.displayClientMessage(
-                    Component.literal("中子屏障：屏蔽弹射物").withStyle(ChatFormatting.AQUA), true);
+                    Component.literal("中子屏罩：屏蔽弹射物").withStyle(ChatFormatting.AQUA), true);
             case 3 -> player.displayClientMessage(
-                    Component.literal("中子屏障：全部屏蔽").withStyle(ChatFormatting.LIGHT_PURPLE), true);
+                    Component.literal("中子屏罩：全部屏蔽").withStyle(ChatFormatting.LIGHT_PURPLE), true);
         }
     }
 
@@ -876,7 +881,7 @@ public class ModArmorSetHandler {
 
 
     // ========================================================================
-    //  超限合金护腿：中子屏障（常驻清除弹射物 + 按Z键切换弹飞）
+    //  超限合金护腿：中子屏罩（常驻清除弹射物 + 按Z键切换弹飞）
     // ========================================================================
     private static void handleTranscendiumReflect(Player player) {
         ItemStack leggings = player.getItemBySlot(EquipmentSlot.LEGS);
@@ -887,7 +892,7 @@ public class ModArmorSetHandler {
         double shieldRadius = 3.0;
         long gameTime = level.getGameTime();
 
-        // ===== 屏蔽弹射物（受中子屏障状态控制）=====
+        // ===== 屏蔽弹射物（受中子屏罩状态控制）=====
         int __bs = NEUTRON_BARRIER_ENABLED.getOrDefault(player.getUUID(), 0);
         if (__bs == 2 || __bs == 3) {
             List<Projectile> projectiles = level.getEntitiesOfClass(
@@ -922,8 +927,8 @@ public class ModArmorSetHandler {
             threat.push(knockDir.x * 1.5, 0.1, knockDir.z * 1.5);
             threat.hurtMarked = true;
 
-            // 冲击波爆发 + 拖尾
-            spawnRepelBurst(player, threat, knockDir, gameTime);
+            // 冲击波爆发 + 拖尾（护腿用普通大小粒子）
+            spawnRepelBurst(player, threat, knockDir, gameTime, false);
         }
 
         // 清理不在范围内的Boss冷却状态和粒子冷却
@@ -985,7 +990,7 @@ public class ModArmorSetHandler {
     /** 屏蔽敌对生物粒子的生成冷却（tick），1s 一次 */
     private static final java.util.Map<UUID, Long> REPEL_PARTICLE_COOLDOWN = new java.util.HashMap<>();
 
-    private static void spawnRepelBurst(Player player, Entity threat, Vec3 knockDir, long gameTime) {
+    private static void spawnRepelBurst(Player player, Entity threat, Vec3 knockDir, long gameTime, boolean big) {
         if (!(player.level() instanceof ServerLevel serverLevel)) return;
 
         // 每 1s 产生一次，避免一直屏蔽一直触发粒子
@@ -994,13 +999,12 @@ public class ModArmorSetHandler {
         if (last != null && gameTime - last < 20) return; // 1s (20 tick) 冷却
         REPEL_PARTICLE_COOLDOWN.put(uid, gameTime);
 
-        // 从玩家胸腔处生成粒子
+        // 从玩家胸腔处生成粒子；big=true 时用更大的排斥粒子（胸甲应急治愈用）
+        net.minecraft.core.particles.SimpleParticleType type =
+                big ? com.dingdongji.mod.init.ModParticles.NEUTRON_BARRIER_REPEL_BIG.get()
+                    : com.dingdongji.mod.init.ModParticles.NEUTRON_BARRIER_REPEL.get();
         Vec3 chest = player.position().add(0, 1.5, 0);
-        serverLevel.sendParticles(
-                com.dingdongji.mod.init.ModParticles.NEUTRON_BARRIER_REPEL.get(),
-                chest.x, chest.y, chest.z,
-                1, 0, 0, 0, 0
-            );
+        serverLevel.sendParticles(type, chest.x, chest.y, chest.z, 1, 0, 0, 0, 0);
     }
 
 
@@ -1025,35 +1029,31 @@ public class ModArmorSetHandler {
         boolean wearingBoots = boots.is(ModItems.TRANSCENDIUM_BOOTS.get());
         UUID uuid = player.getUUID();
 
-        // 超限合金靴子：永久免疫摔落伤害（穿靴子时无论何种方式摔落都不受伤）
-        if (wearingBoots) {
-            player.fallDistance = 0;
-        }
-
         if (!wearingBoots) {
-            // 脱下超限靴子：清理本 mod 的蹈虚/加速状态
+            // 脱下超限靴子：仅清理本 mod 自己的蹈虚/加速内部状态。
+            // 【重要】绝不在未穿超限靴子时主动关闭 mayfly/flying：
+            // 飞行能力可能来自飘升机(AnvilCraft)或其他附属模组，本 mod 不应干预，
+            // 否则会误关其他模组的飘升机飞行。
+            // 仅当“本 mod 之前开启过蹈虚飞行(IONOCRAFT_FLYING=true)”时才清理这部分飞行。
+            boolean wasIonocraftFlying = IONOCRAFT_FLYING.getOrDefault(uuid, false);
             IONOCRAFT_FLYING.remove(uuid);
             IONOCRAFT_SPEED_BOOSTED.remove(uuid);
             boolean needUpdate = false;
-            // 只要飞行速度仍等于本 mod 的加速值(0.1)就还原为默认(0.05)。
-            // 不受创造模式限制（否则创造模式下脱靴速度残留翻倍）；
-            // 飘升机是独立载具、不使用 flyingSpeed，因此不会误伤飘升机的正常速度。
+            // 仅当飞行速度确实等于本 mod 的加速值(0.1)时还原为默认(0.05)，
+            // 不触碰其他来源设置的飞行速度。
             if (Math.abs(player.getAbilities().getFlyingSpeed() - BOOSTED_FLY_SPEED) < 1.0E-4f) {
                 player.getAbilities().setFlyingSpeed(DEFAULT_FLY_SPEED);
                 needUpdate = true;
             }
-            if (!player.isCreative() && !player.isSpectator()) {
-                // 若背后/饰品栏有飘升机，保留飘升机自身的飞行能力，不关闭；否则关闭本 mod 开启的创造飞行
-                boolean hasIonocraft = !AnvilCraftCompat.getIonocraftBackpack(player).isEmpty();
-                if (!hasIonocraft) {
-                    if (player.getAbilities().mayfly) {
-                        player.getAbilities().mayfly = false;
-                        needUpdate = true;
-                    }
-                    if (player.getAbilities().flying) {
-                        player.getAbilities().flying = false;
-                        needUpdate = true;
-                    }
+            // 仅关闭本 mod 自己开启的蹈虚飞行；飘升机或其他模组的飞行能力一律保留
+            if (wasIonocraftFlying && !player.isCreative() && !player.isSpectator()) {
+                if (player.getAbilities().mayfly) {
+                    player.getAbilities().mayfly = false;
+                    needUpdate = true;
+                }
+                if (player.getAbilities().flying) {
+                    player.getAbilities().flying = false;
+                    needUpdate = true;
                 }
             }
             if (needUpdate) {
@@ -1192,7 +1192,7 @@ public class ModArmorSetHandler {
         Player player = event.getEntity();
         if (player.level().isClientSide) return;
 
-        // 恢复按键状态（夜视/高亮/蹈火/舒适/中子屏障/蹈虚模式）
+        // 恢复按键状态（夜视/高亮/蹈火/舒适/中子屏罩/蹈虚模式）
         loadToggleStates(player);
         // tick 续期会在下一个 tick 自动根据 HELMET_MODE 恢复夜视效果
     }
@@ -1218,10 +1218,19 @@ public class ModArmorSetHandler {
         if (!(event.getEntity() instanceof Player player)) return;
         if (player.level().isClientSide) return;
 
+        DamageSource source = event.getContainer().getSource();
+
+        // 超限合金靴子：永久免疫摔落伤害（穿靴子时任何方式摔落都不受伤，
+        // 但保留正常下落判定，不影响跳跃/踩耕地/落地方块声音等事件）
+        ItemStack boots = player.getItemBySlot(EquipmentSlot.FEET);
+        if (boots.is(ModItems.TRANSCENDIUM_BOOTS.get()) && source.is(DamageTypes.FALL)) {
+            event.getContainer().setNewDamage(0.0f);
+            return;
+        }
+
         ItemStack chest = player.getItemBySlot(EquipmentSlot.CHEST);
         if (!chest.is(ModItems.TRANSCENDIUM_CHESTPLATE.get())) return;
 
-        DamageSource source = event.getContainer().getSource();
         // 无视：魔法伤害、虚空伤害、接触伤害
         if (source.is(DamageTypes.MAGIC) || source.is(DamageTypes.INDIRECT_MAGIC)
                 || source.is(DamageTypes.FELL_OUT_OF_WORLD)

@@ -234,7 +234,7 @@ public class ModEvents {
         }
         if (stack.has(ModComponents.NEUTRON_BARRIER.get())) {
             String neutronKey = com.dingdongji.mod.input.ModKeyBindings.NEUTRON_BARRIER_KEY.getTranslatedKeyMessage().getString();
-            descLines.add(Component.literal(String.format("中子屏障：按 [%s] 切换清除飞向自身的弹射物与排斥靠近自身敌对生物的开关", neutronKey)).setStyle(TRANSCENDIUM_STYLE));
+            descLines.add(Component.literal(String.format("中子屏罩：按 [%s] 切换清除飞向自身的弹射物与排斥靠近自身敌对生物的开关", neutronKey)).setStyle(TRANSCENDIUM_STYLE));
         }
         if (stack.has(ModComponents.BARRIER_II.get())) {
             descLines.add(Component.literal("壁垒II：对大部分伤害大幅减伤，无视魔法伤害，虚空伤害，接触伤害，爆炸伤害；生命值低时紧急治愈穿戴者，触发时清除所有负面效果").setStyle(TRANSCENDIUM_STYLE));

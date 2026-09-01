@@ -48,6 +48,10 @@ public class ClientSetupHandler {
                 com.dingdongji.mod.client.particle.NeutronBarrierParticle.Provider::new
         );
         event.registerSpriteSet(
+                com.dingdongji.mod.init.ModParticles.NEUTRON_BARRIER_REPEL_BIG.get(),
+                com.dingdongji.mod.client.particle.NeutronBarrierParticle.Provider::new
+        );
+        event.registerSpriteSet(
                 com.dingdongji.mod.init.ModParticles.NEUTRON_BARRIER_ABSORB.get(),
                 com.dingdongji.mod.client.particle.NeutronBarrierParticle.Provider::new
         );

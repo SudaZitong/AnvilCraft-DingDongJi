@@ -4,7 +4,7 @@ license = "LGPL-3.0"
 
 [[mods]]
 modId = "dingdongji"
-version = "0.0.6"
+version = "0.0.7"
 displayName = "AnvilCraft-DingDongJi"
 logoFile = "icon.png"
 credits = "WPS灵犀"

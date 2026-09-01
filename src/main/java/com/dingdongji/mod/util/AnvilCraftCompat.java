@@ -132,16 +132,29 @@ public class AnvilCraftCompat {
     private static void initIonocraft() {
         if (ionocraftChecked) return;
         ionocraftChecked = true;
-        try {
-            ionocraftBackpackItemClass = Class.forName("dev.dubhe.anvilcraft.item.IonoCraftBackpackItem");
-            ionocraftGetByPlayer = ionocraftBackpackItemClass.getDeclaredMethod("getByPlayer", Player.class);
-            ionocraftGetByPlayer.setAccessible(true);
-            ionocraftGetEnergy = ionocraftBackpackItemClass.getDeclaredMethod("getEnergyStored", ItemStack.class);
-            ionocraftGetEnergy.setAccessible(true);
-            LOGGER.info("[DingDongJi] 飘升机反射初始化成功");
-        } catch (Exception e) {
-            LOGGER.info("[DingDongJi] 飘升机未安装或反射失败，跳过");
+        // 兼容铁砧工艺飘升机类名大小写变化：
+        // 旧版(1.6.0及之前)为 IonoCraftBackpackItem，新版(snapshot.2142及之后)改为 IonocraftBackpackItem
+        String[] candidates = {
+                "dev.dubhe.anvilcraft.item.IonocraftBackpackItem",
+                "dev.dubhe.anvilcraft.item.IonoCraftBackpackItem"
+        };
+        for (String clsName : candidates) {
+            try {
+                ionocraftBackpackItemClass = Class.forName(clsName);
+                ionocraftGetByPlayer = ionocraftBackpackItemClass.getDeclaredMethod("getByPlayer", Player.class);
+                ionocraftGetByPlayer.setAccessible(true);
+                ionocraftGetEnergy = ionocraftBackpackItemClass.getDeclaredMethod("getEnergyStored", ItemStack.class);
+                ionocraftGetEnergy.setAccessible(true);
+                LOGGER.info("[DingDongJi] 飘升机反射初始化成功: " + clsName);
+                return;
+            } catch (Exception e) {
+                ionocraftBackpackItemClass = null;
+                ionocraftGetByPlayer = null;
+                ionocraftGetEnergy = null;
+                // 尝试下一个候选类名
+            }
         }
+        LOGGER.info("[DingDongJi] 飘升机未安装或反射失败，跳过");
     }
 
     /**

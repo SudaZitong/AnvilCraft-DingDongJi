@@ -16,6 +16,8 @@ import net.neoforged.api.distmarker.OnlyIn;
  */
 public class IonocraftBootsExhaustParticle extends TextureSheetParticle {
     private final SpriteSet sprites;
+    /** 起始（最大）尺寸，从靴子喷出后随下坠逐渐变小 */
+    private final float baseSize;
 
     protected IonocraftBootsExhaustParticle(
         ClientLevel level, double x, double y, double z,
@@ -31,7 +33,8 @@ public class IonocraftBootsExhaustParticle extends TextureSheetParticle {
         this.rCol = 1.0F;            // 白色（纹理自带紫色 anvilon_space）
         this.gCol = 1.0F;
         this.bCol = 1.0F;
-        this.quadSize = 0.08F * (this.random.nextFloat() * 0.5F + 0.5F);
+        this.baseSize = 0.08F; // 固定起始大小，与飘升机粒子最大时一致，不随机
+        this.quadSize = this.baseSize;
         this.lifetime = (int) (12.0 / ((double) this.random.nextFloat() * 0.4 + 0.6)); // 寿命明显加长(12~20tick)，消失距离更远
         this.setSpriteFromAge(sprites);
         this.alpha = 0.6F;
@@ -48,7 +51,8 @@ public class IonocraftBootsExhaustParticle extends TextureSheetParticle {
         this.setSpriteFromAge(this.sprites);
         float progress = (float) this.age / (float) this.lifetime;
         this.alpha = 0.6F * (1.0F - progress);
-        this.quadSize += 0.001F;
+        // 从靴子喷出时最大，下坠到消失逐渐变小
+        this.quadSize = this.baseSize * (1.0F - progress);
     }
 
     @OnlyIn(Dist.CLIENT)

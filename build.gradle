@@ -12,7 +12,7 @@ base {
 }
 
 group = 'com.dingdongji'
-version = '0.0.6'
+version = '0.0.7'
 
 repositories {
     mavenLocal()
@@ -23,7 +23,8 @@ repositories {
 dependencies {
     implementation "net.neoforged:neoforge:${neo_version}"
     // 铁砧工艺（AnvilCraft）：编译期引用其锻造台/网络类
-    implementation files('libs/anvilcraft-1.6.0-snapshot2127.jar')
+    // 自动加载 libs 目录下所有 jar，避免写死文件名导致与 libs 中实际文件名不一致
+    implementation fileTree(dir: 'libs', include: '*.jar')
 }
 
 tasks.withType(JavaCompile).configureEach {

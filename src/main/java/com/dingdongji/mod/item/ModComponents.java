@@ -2,6 +2,7 @@ package com.dingdongji.mod.item;
 
 import com.dingdongji.mod.KryptonMod;
 import com.dingdongji.mod.item.component.*;
+import com.mojang.serialization.Codec;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.registries.Registries;

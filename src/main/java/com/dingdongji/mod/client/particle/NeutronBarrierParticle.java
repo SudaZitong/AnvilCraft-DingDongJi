@@ -12,7 +12,7 @@ import net.minecraft.world.entity.player.Player;
 import net.neoforged.api.distmarker.*;
 
 /**
- * 中子屏障粒子（平躺于地面，与地面平行）：
+ * 中子屏罩粒子（平躺于地面，与地面平行）：
  * - 屏蔽敌对生物（repel）：从玩家胸腔（下移约5像素）同时放大、淡出、下坠到地面，
  *   放大到 2 格触发边缘，跟随玩家，不受玩家移动影响。生命周期 0.8s。
  * - 屏蔽弹射物（absorb）：从弹射物消失点快速放大 + 淡出，同时顺时针快速旋转，
@@ -28,15 +28,19 @@ public class NeutronBarrierParticle extends TextureSheetParticle {
     /** 弹射物消失点的起始高度（absorb 用）；repel 用动态计算 */
     private final double startY;
 
-    protected NeutronBarrierParticle(ClientLevel level, double x, double y, double z, boolean isRepel) {
+    protected NeutronBarrierParticle(ClientLevel level, double x, double y, double z, boolean isRepel, boolean isBig) {
         super(level, x, y, z);
         this.isRepel = isRepel;
         this.gravity = 0F;
         this.friction = 1.0F;
         this.lifetime = 16; // 0.8s（两个粒子统一）
         this.quadSize = 0F;
-        // repel 放大到 2 格触发边缘；absorb 略小
-        this.maxSize = isRepel ? 2.0F : 1.2F;
+        // repel 放大到 2 格触发边缘；胸甲大号 repel 再大一点(2.4)；absorb 略小
+        if (isRepel) {
+            this.maxSize = isBig ? 2.4F : 2.0F;
+        } else {
+            this.maxSize = 1.2F;
+        }
         this.alpha = 0F;
         this.rCol = 1F;
         this.gCol = 1F;
@@ -195,8 +199,9 @@ public class NeutronBarrierParticle extends TextureSheetParticle {
         public Particle createParticle(SimpleParticleType type, ClientLevel level,
                                        double x, double y, double z,
                                        double xd, double yd, double zd) {
-            boolean isRepel = type == ModParticles.NEUTRON_BARRIER_REPEL.get();
-            NeutronBarrierParticle p = new NeutronBarrierParticle(level, x, y, z, isRepel);
+            boolean isBig = type == ModParticles.NEUTRON_BARRIER_REPEL_BIG.get();
+            boolean isRepel = type == ModParticles.NEUTRON_BARRIER_REPEL.get() || isBig;
+            NeutronBarrierParticle p = new NeutronBarrierParticle(level, x, y, z, isRepel, isBig);
             p.pickSprite(this.sprites);
             return p;
         }

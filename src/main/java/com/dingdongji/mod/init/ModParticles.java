@@ -17,6 +17,8 @@ public class ModParticles {
 
     public static final Supplier<SimpleParticleType> NEUTRON_BARRIER_REPEL =
             PARTICLES.register("neutron_barrier_repel", () -> new SimpleParticleType(false));
+    public static final Supplier<SimpleParticleType> NEUTRON_BARRIER_REPEL_BIG =
+            PARTICLES.register("neutron_barrier_repel_big", () -> new SimpleParticleType(false));
     public static final Supplier<SimpleParticleType> NEUTRON_BARRIER_ABSORB =
             PARTICLES.register("neutron_barrier_absorb", () -> new SimpleParticleType(false));
 }

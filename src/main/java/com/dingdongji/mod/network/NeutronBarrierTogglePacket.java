@@ -6,7 +6,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
 /**
- * C2S 网络包：超限合金护腿中子屏障开关。
+ * C2S 网络包：超限合金护腿中子屏罩开关。
  */
 public record NeutronBarrierTogglePacket() implements CustomPacketPayload {
 

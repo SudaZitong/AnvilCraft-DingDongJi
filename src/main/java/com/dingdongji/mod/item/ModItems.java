@@ -61,7 +61,8 @@ public class ModItems {
 
     public static final DeferredItem<BlockItem> KEJI_BLOCK =
             ITEMS.register("keji_block",
-                    () -> new BlockItem(ModBlocks.KEJI_BLOCK.get(), new Item.Properties())
+                    () -> new BlockItem(ModBlocks.KEJI_BLOCK.get(),
+                            new Item.Properties())
             );
 
     // ===== 新物品 =====
@@ -277,7 +278,7 @@ public class ModItems {
 
     public static final DeferredItem<ArmorItem> TRANSCENDIUM_BOOTS =
             ITEMS.register("transcendium_boots",
-                    () -> new ArmorItem(ModArmorMaterials.holder(ModArmorMaterials.TRANSCENDIUM), ArmorItem.Type.BOOTS,
+                    () -> new TranscendiumBootsItem(ModArmorMaterials.holder(ModArmorMaterials.TRANSCENDIUM), ArmorItem.Type.BOOTS,
                             new Item.Properties()
                                     .durability(ArmorItem.Type.BOOTS.getDurability(407))
                                     .fireResistant()
