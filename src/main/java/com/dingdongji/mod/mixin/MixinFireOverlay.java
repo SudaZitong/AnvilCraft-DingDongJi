@@ -13,9 +13,8 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * 余烬 / 超限头盔：屏蔽屏幕上的火焰覆盖层。
- * 火焰覆盖层由 ScreenEffectRenderer.renderFire 渲染（并非 Gui.renderTextureOverlay / displayFireAnimation）。
- * 穿着余烬头盔时 cancel 渲染，不影响 fire ticks 本身（余烬套回耐久等功能仍依赖 in_fire）。
+ * 余烬头盔：取消着火 overlay。
+ * 超限头盔：取消着火、水下扭曲、卡墙 overlay。
  */
 @Mixin(ScreenEffectRenderer.class)
 public abstract class MixinFireOverlay {
@@ -27,6 +26,25 @@ public abstract class MixinFireOverlay {
         ItemStack helmet = player.getItemBySlot(EquipmentSlot.HEAD);
         if (helmet.is(ModItems.EMBER_METAL_HELMET.get())
                 || helmet.is(ModItems.TRANSCENDIUM_HELMET.get())) {
+            ci.cancel();
+        }
+    }
+
+    @Inject(method = "renderWater", at = @At("HEAD"), cancellable = true)
+    private static void ddj$suppressWaterOverlay(Minecraft minecraft, PoseStack poseStack, CallbackInfo ci) {
+        Player player = Minecraft.getInstance().player;
+        if (player == null) return;
+        if (player.getItemBySlot(EquipmentSlot.HEAD).is(ModItems.TRANSCENDIUM_HELMET.get())) {
+            ci.cancel();
+        }
+    }
+
+    @Inject(method = "renderTex", at = @At("HEAD"), cancellable = true)
+    private static void ddj$suppressInWallOverlay(net.minecraft.client.renderer.texture.TextureAtlasSprite sprite,
+                                                  PoseStack poseStack, CallbackInfo ci) {
+        Player player = Minecraft.getInstance().player;
+        if (player == null) return;
+        if (player.getItemBySlot(EquipmentSlot.HEAD).is(ModItems.TRANSCENDIUM_HELMET.get())) {
             ci.cancel();
         }
     }

@@ -125,7 +125,6 @@ public class ModArmorSetHandler {
         HELMET_MODE.remove(uuid);
         IONOCRAFT_FLYING.remove(uuid);
         IONOCRAFT_GRANTED.remove(uuid);
-        IONOCRAFT_SPEED_BOOSTED.remove(uuid);
         IONOCRAFT_FLYING_SYNC.remove(uuid);
         IONOCRAFT_SYNC_LAST_TICK.remove(uuid);
         REPEL_PARTICLE_COOLDOWN.remove(uuid);
@@ -144,6 +143,10 @@ public class ModArmorSetHandler {
     @SubscribeEvent
     public static void onPlayerTick(PlayerTickEvent.Pre event) {
         Player player = event.getEntity();
+
+        // 液面/虚空平面托举两端都跑，客户端才能预测行走
+        handleSurfaceWalking(player);
+
         if (player.level().isClientSide) return;
 
         // ===== 叽套（全套效果）=====
@@ -157,11 +160,8 @@ public class ModArmorSetHandler {
         handleRoyalSteelChestplate(player);
 
         // ===== 余烬金属套（逐件效果）=====
-        handleEmberHelmet(player);
         handleEmberChestplate(player);
         handleEmberLeggings(player);
-        handleEmberBoots(player);
-        handleEmberBootsFirePath(player);
         handleEmberArmorRepair(player);
 
         // ===== 超限合金套（逐件效果）=====
@@ -413,20 +413,29 @@ public class ModArmorSetHandler {
         }
         player.displayClientMessage(msg, true);
         saveToggleStates(player);
+        if (player instanceof ServerPlayer serverPlayer) {
+            syncAbilityState(serverPlayer);
+        }
     }
 
-
-
-    // ========================================================================
-    //  余烬头盔：隔热（抗火）
-    // ========================================================================
-    private static void handleEmberHelmet(Player player) {
-        ItemStack head = player.getItemBySlot(EquipmentSlot.HEAD);
-        if (head.is(ModItems.EMBER_METAL_HELMET.get()) || head.is(ModItems.TRANSCENDIUM_HELMET.get())) {
-            addHiddenEffect(player, MobEffects.FIRE_RESISTANCE, 0);
-        } else {
-            removeOwnEffect(player, MobEffects.FIRE_RESISTANCE);
+    public static boolean isLavaWalkerEnabled(Player player) {
+        if (player.level().isClientSide) {
+            if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
+                return com.dingdongji.mod.client.ClientAbilityState.isLavaWalker(player);
+            }
+            return false;
         }
+        return LAVA_WALKER_ENABLED.getOrDefault(player.getUUID(), false);
+    }
+
+    public static void syncAbilityState(ServerPlayer player) {
+        PacketDistributor.sendToPlayer(
+                player,
+                new com.dingdongji.mod.network.AbilityStateSyncPacket(
+                        LAVA_WALKER_ENABLED.getOrDefault(player.getUUID(), false),
+                        HELMET_MODE.getOrDefault(player.getUUID(), 5)
+                )
+        );
     }
 
     // ========================================================================
@@ -543,66 +552,67 @@ public class ModArmorSetHandler {
     }
 
     // ========================================================================
-    //  余烬靴子：蹈火（炽足兽式岩浆表面行走）
+    //  液面行走 + 世界底部 Y=-64 支撑（潜行当 tick 取消，不写持久化）
     // ========================================================================
-    private static void handleEmberBoots(Player player) {
+    private static final double VOID_WALK_Y = -64.0;
+
+    private static void handleSurfaceWalking(Player player) {
         ItemStack boots = player.getItemBySlot(EquipmentSlot.FEET);
-        if (!boots.is(ModItems.EMBER_METAL_BOOTS.get())) {
-            return;
-        }
+        boolean transBoots = boots.is(ModItems.TRANSCENDIUM_BOOTS.get());
+        boolean emberLava = boots.is(ModItems.EMBER_METAL_BOOTS.get()) && isLavaWalkerEnabled(player);
+        if (!transBoots && !emberLava) return;
 
-        Level level = player.level();
-        BlockPos playerPos = player.blockPosition();
-
-        // 多途径检测玩家是否接触岩浆
-        boolean onLava = player.isInLava();
-        if (!onLava) {
-            BlockPos below = playerPos.below();
-            onLava = level.getFluidState(below).is(FluidTags.LAVA);
-        }
-        if (!onLava) {
-            onLava = level.getFluidState(playerPos).is(FluidTags.LAVA);
-        }
-        if (!onLava) {
-            BlockPos below2 = playerPos.below(2);
-            onLava = level.getFluidState(below2).is(FluidTags.LAVA);
-        }
-
-        if (!onLava) return;
-
-        Vec3 currentMotion = player.getDeltaMovement();
-        double hSpeed = Math.sqrt(currentMotion.x * currentMotion.x + currentMotion.z * currentMotion.z);
-        if (hSpeed > 0.01 && hSpeed < 0.1) {
-            double scale = 0.1 / hSpeed;
-            player.setDeltaMovement(currentMotion.x * scale, currentMotion.y, currentMotion.z * scale);
-        } else {
-            player.setDeltaMovement(currentMotion.x * 2.0, currentMotion.y, currentMotion.z * 2.0);
+        if (!player.isShiftKeyDown()) {
+            handleFluidSurface(player, transBoots, emberLava);
+            if (transBoots) {
+                handleVoidPlane(player);
+            }
         }
     }
 
-    // ========================================================================
-    //  余烬靴子：火焰路径（开启后行走路径产生火焰）
-    // ========================================================================
-    private static void handleEmberBootsFirePath(Player player) {
-        ItemStack boots = player.getItemBySlot(EquipmentSlot.FEET);
-        if (!boots.is(ModItems.EMBER_METAL_BOOTS.get())) return;
-        if (player.level().isClientSide) return;
-
-        // 检查蹈火开关
-        if (!LAVA_WALKER_ENABLED.getOrDefault(player.getUUID(), false)) return;
-
+    private static void handleFluidSurface(Player player, boolean walkWater, boolean walkLava) {
         Level level = player.level();
-        BlockPos playerPos = player.blockPosition();
+        BlockPos pos = player.blockPosition();
+        var here = level.getFluidState(pos);
+        var below = level.getFluidState(pos.below());
 
-        // 每 2 tick 在脚部位置生成火焰
-        // 灵魂沙等非完整方块上行走时，playerPos 返回的是脚下的方块而非脚部位置
-        // 因此同时检测 playerPos 和 playerPos.above()
-        if (player.tickCount % 2 == 0) {
-            if (level.getBlockState(playerPos).isAir()) {
-                level.setBlockAndUpdate(playerPos, Blocks.FIRE.defaultBlockState());
-            } else if (level.getBlockState(playerPos.above()).isAir()) {
-                level.setBlockAndUpdate(playerPos.above(), Blocks.FIRE.defaultBlockState());
+        boolean lavaHere = walkLava && here.is(FluidTags.LAVA);
+        boolean lavaBelow = walkLava && below.is(FluidTags.LAVA);
+        boolean waterHere = walkWater && here.is(FluidTags.WATER);
+        boolean waterBelow = walkWater && below.is(FluidTags.WATER);
+        if (!lavaHere && !lavaBelow && !waterHere && !waterBelow) return;
+
+        boolean eyeInFluid = (walkLava && player.isEyeInFluid(FluidTags.LAVA))
+                || (walkWater && player.isEyeInFluid(FluidTags.WATER));
+        if (!eyeInFluid) {
+            player.setOnGround(true);
+            Vec3 mot = player.getDeltaMovement();
+            if (mot.y < 0) {
+                player.setDeltaMovement(mot.x, 0.0, mot.z);
             }
+            player.fallDistance = 0.0F;
+        } else {
+            Vec3 mot = player.getDeltaMovement();
+            player.setDeltaMovement(mot.x * 0.5, Math.max(mot.y, 0.12), mot.z * 0.5);
+        }
+    }
+
+    private static void handleVoidPlane(Player player) {
+        double y = player.getY();
+        if (y < VOID_WALK_Y) return; // 已穿过平面，不拉回
+
+        Vec3 mot = player.getDeltaMovement();
+        if (y + mot.y < VOID_WALK_Y) {
+            player.setPos(player.getX(), VOID_WALK_Y, player.getZ());
+            player.setDeltaMovement(mot.x, 0.0, mot.z);
+            player.setOnGround(true);
+            player.fallDistance = 0.0F;
+        } else if (y <= VOID_WALK_Y + 0.05) {
+            player.setOnGround(true);
+            if (mot.y < 0) {
+                player.setDeltaMovement(mot.x, 0.0, mot.z);
+            }
+            player.fallDistance = 0.0F;
         }
     }
 
@@ -669,14 +679,11 @@ public class ModArmorSetHandler {
 
 
     // ========================================================================
-    //  超越合金头盔：适应（夜视 + 水下呼吸 + 敌对发光）
+    //  超越合金头盔：适应（真夜视 + 氧气锁定 + 敌对发光）
     // ========================================================================
     private static void handleTranscendiumHelmet(Player player) {
         ItemStack helmet = player.getItemBySlot(EquipmentSlot.HEAD);
         if (!helmet.is(ModItems.TRANSCENDIUM_HELMET.get())) {
-            // 没戴头盔时清除模组添加的夜视效果，不影响其他来源
-            removeOwnEffect(player, MobEffects.NIGHT_VISION);
-            removeOwnEffect(player, MobEffects.WATER_BREATHING);
             return;
         }
 
@@ -689,16 +696,7 @@ public class ModArmorSetHandler {
             player.clearFire();
         }
 
-        // 从 HELMET_MODE Map 读取夜视状态（与旧版一致，避免 DataComponent 同步导致闪烁）
-        int mode = HELMET_MODE.getOrDefault(player.getUUID(), 5);
-        if (mode == 2 || mode == 4) {
-            addHiddenEffect(player, MobEffects.NIGHT_VISION, 0);
-        }
-
-        // 水下呼吸按需应用
-        addHiddenEffect(player, MobEffects.WATER_BREATHING, 0);
-        // 隐藏抗火效果（火焰伤害免疫 + 岩浆明视由 mixin 补充）
-        addHiddenEffect(player, MobEffects.FIRE_RESISTANCE, 0);
+        player.setAirSupply(player.getMaxAirSupply());
 
         // 检查高亮开关（降频到每20tick扫描一次；GLOWING 持续200tick=10秒，不会断档）
         if (GLOWING_VISION_ENABLED.getOrDefault(player.getUUID(), false)
@@ -749,15 +747,7 @@ public class ModArmorSetHandler {
         int nextMode = (HELMET_MODE.getOrDefault(uuid, 5) + 1) % 6;
         HELMET_MODE.put(uuid, nextMode);
         boolean glowingOn = (nextMode == 0 || nextMode == 4);
-        boolean nightVisionOn = (nextMode == 2 || nextMode == 4);
         GLOWING_VISION_ENABLED.put(uuid, glowingOn);
-
-        // 通过 HELMET_MODE Map 即时应用/移除药水效果（与旧版一致）
-        if (nightVisionOn) {
-            addHiddenEffect(player, MobEffects.NIGHT_VISION, 0);
-        } else {
-            removeOwnEffect(player, MobEffects.NIGHT_VISION);
-        }
 
                 String[] names = {
                 "\u9002\u5E94\uFF1A\u9AD8\u4EAE\u5F00",
@@ -771,6 +761,7 @@ public class ModArmorSetHandler {
                 Component.literal(names[nextMode]).withStyle(HELMET_MODE_COLORS[nextMode]), true
         );
         saveToggleStates(player);
+        syncAbilityState(player);
     }
 
     public static void toggleNeutronBarrier(ServerPlayer player) {
@@ -1029,40 +1020,30 @@ public class ModArmorSetHandler {
     // 每次属性计算时动态添加，附魔变化自动触发重算）
 
     // ========================================================================
-    //  超限合金靴子：蹈虚（穿戴后即可创造飞行，按键可开关；与飘升机同时穿戴加速）
+    //  超限合金靴子：蹈虚（穿戴后即可创造飞行，按键可开关）
     // ========================================================================
     private static final Map<UUID, Boolean> IONOCRAFT_FLYING = new HashMap<>();
     /** 本 tick 周期内是否由本 mod 授予了 mayfly，脱靴时只清这一次 */
     private static final Map<UUID, Boolean> IONOCRAFT_GRANTED = new HashMap<>();
 
     private static final float DEFAULT_FLY_SPEED = 0.05f;
-    private static final float BOOSTED_FLY_SPEED = 0.1f;   // 飘升机+增强靴子 = 2倍飞行速度
-    private static final Map<UUID, Boolean> IONOCRAFT_SPEED_BOOSTED = new HashMap<>();
 
     private static void handleTranscendiumBootsFlight(Player player) {
         ItemStack boots = player.getItemBySlot(EquipmentSlot.FEET);
         boolean wearingBoots = boots.is(ModItems.TRANSCENDIUM_BOOTS.get());
         UUID uuid = player.getUUID();
+        boolean isCreative = player.isCreative();
+        boolean isSpectator = player.isSpectator();
 
         if (!wearingBoots) {
-            // 脱下超限靴子：仅清理本 mod 自己的蹈虚/加速内部状态。
-            // 【重要】绝不在未穿超限靴子时主动关闭 mayfly/flying：
-            // 飞行能力可能来自飘升机(AnvilCraft)或其他附属模组，本 mod 不应干预，
-            // 否则会误关其他模组的飘升机飞行。
-            // 开关偏好保留在 IONOCRAFT_FLYING 中，下次穿上仍按上次选择恢复。
-            // 只用 GRANTED 判断「本 mod 是否正在授予飞行」，避免每 tick 误关其他模组。
             boolean granted = IONOCRAFT_GRANTED.remove(uuid) == Boolean.TRUE;
-            IONOCRAFT_SPEED_BOOSTED.remove(uuid);
             boolean needUpdate = false;
-            // 仅当飞行速度确实等于本 mod 的加速值(0.1)时还原为默认(0.05)，
-            // 不触碰其他来源设置的飞行速度。
-            if (Math.abs(player.getAbilities().getFlyingSpeed() - BOOSTED_FLY_SPEED) < 1.0E-4f) {
+            if (Math.abs(player.getAbilities().getFlyingSpeed() - DEFAULT_FLY_SPEED) > 1.0E-4f
+                    && granted) {
                 player.getAbilities().setFlyingSpeed(DEFAULT_FLY_SPEED);
                 needUpdate = true;
             }
-            // 仅关闭本 mod 自己开启的蹈虚飞行；飘升机仍有电时保留其飞行能力
-            boolean hasIonocraft = AnvilCraftCompat.hasActiveIonocraftBackpack(player);
-            if (granted && !hasIonocraft && !player.isCreative() && !player.isSpectator()) {
+            if (granted && !isCreative && !isSpectator) {
                 if (player.getAbilities().mayfly) {
                     player.getAbilities().mayfly = false;
                     needUpdate = true;
@@ -1079,28 +1060,13 @@ public class ModArmorSetHandler {
             return;
         }
 
-        // 默认开启：穿上即可飞行（与飘升机背包一致），无需每次进游戏按快捷键。
-        // computeIfAbsent 把偏好写入 map，脱靴时才能正确关掉本 mod 开的飞行。
         boolean shouldFly = IONOCRAFT_FLYING.computeIfAbsent(uuid, k -> true);
-        boolean isCreative = player.isCreative();
-        boolean isSpectator = player.isSpectator();
-        // 飘升机是否有电（有电时由飘升机自身供能/出粒子，蹈虚作为速度增强）
-        boolean hasIonocraft = AnvilCraftCompat.hasActiveIonocraftBackpack(player);
-
-        // ====== 飘升机没电 + 蹈虚未开启 + 玩家仍处飞行状态（飘升机刚耗尽电量）→ 蹈虚自动接管 ======
-        // 不关闭创造飞行状态，将创造飞行灵活转移至蹈虚上；粒子随之切到蹈虚。
-        if (!hasIonocraft && !shouldFly && !isCreative && !isSpectator
-                && (player.getAbilities().flying || player.getAbilities().mayfly)) {
-            IONOCRAFT_FLYING.put(uuid, true);
-            shouldFly = true;
-        }
-
-        // 决定是否允许创造飞行：蹈虚开启 或 飘升机有电（两者任一供能则保持 mayfly）
-        boolean wantFly = shouldFly || hasIonocraft;
+        boolean wantFly = shouldFly || isCreative || isSpectator;
         if (wantFly && !player.getAbilities().mayfly) {
             player.getAbilities().mayfly = true;
+            player.getAbilities().setFlyingSpeed(DEFAULT_FLY_SPEED);
             player.onUpdateAbilities();
-        } else if (!wantFly && player.getAbilities().mayfly && !isCreative) {
+        } else if (!wantFly && player.getAbilities().mayfly && !isCreative && !isSpectator) {
             player.getAbilities().mayfly = false;
             player.getAbilities().flying = false;
             player.getAbilities().setFlyingSpeed(DEFAULT_FLY_SPEED);
@@ -1112,33 +1078,9 @@ public class ModArmorSetHandler {
             IONOCRAFT_GRANTED.remove(uuid);
         }
 
-        // ====== 飞行状态同步（复刻飘升机：广播蹈虚飞行状态到所有客户端）======
-        // 蹈虚粒子仅在「蹈虚开启 且 飘升机没电」时喷：
-        // 飘升机有电时用飘升机自身的粒子；关闭蹈虚时同样改用飘升机粒子。
-        boolean nowFlying = shouldFly && !hasIonocraft
+        boolean nowFlying = shouldFly
                 && player.getAbilities().flying && !isCreative && !isSpectator;
         syncIonocraftFlyingState(player, nowFlying);
-
-        // ====== 飞行速度提升：蹈虚开启 + 飘升机有电 = 2倍 ======
-        if (shouldFly && player.getAbilities().flying) {
-            boolean wasBoosted = IONOCRAFT_SPEED_BOOSTED.getOrDefault(uuid, false);
-
-            if (hasIonocraft && !wasBoosted) {
-                player.getAbilities().setFlyingSpeed(BOOSTED_FLY_SPEED);
-                player.onUpdateAbilities();
-                IONOCRAFT_SPEED_BOOSTED.put(uuid, true);
-            } else if (!hasIonocraft && wasBoosted) {
-                player.getAbilities().setFlyingSpeed(DEFAULT_FLY_SPEED);
-                player.onUpdateAbilities();
-                IONOCRAFT_SPEED_BOOSTED.put(uuid, false);
-            }
-        } else {
-            if (IONOCRAFT_SPEED_BOOSTED.getOrDefault(uuid, false)) {
-                player.getAbilities().setFlyingSpeed(DEFAULT_FLY_SPEED);
-                player.onUpdateAbilities();
-                IONOCRAFT_SPEED_BOOSTED.put(uuid, false);
-            }
-        }
     }
 
     private static final Map<UUID, Boolean> IONOCRAFT_FLYING_SYNC = new HashMap<>();
@@ -1187,16 +1129,11 @@ public class ModArmorSetHandler {
         if (nowFlying) {
             player.getAbilities().mayfly = true;
             player.getAbilities().flying = true;
-        } else {
-            // 若背后/饰品栏有飘升机，保留飘升机自身的飞行能力，仅关闭本 mod 的加速
-            boolean hasIonocraft = AnvilCraftCompat.hasActiveIonocraftBackpack(player);
-            if (!hasIonocraft) {
-                player.getAbilities().mayfly = false;
-                player.getAbilities().flying = false;
-            }
-            player.getAbilities().setFlyingSpeed(DEFAULT_FLY_SPEED);
-            IONOCRAFT_SPEED_BOOSTED.put(uuid, false);
+        } else if (!player.isCreative() && !player.isSpectator()) {
+            player.getAbilities().mayfly = false;
+            player.getAbilities().flying = false;
         }
+        player.getAbilities().setFlyingSpeed(DEFAULT_FLY_SPEED);
         player.onUpdateAbilities();
 
         player.displayClientMessage(
@@ -1218,7 +1155,9 @@ public class ModArmorSetHandler {
 
         // 恢复按键状态（夜视/高亮/蹈火/舒适/中子屏罩/蹈虚模式）
         loadToggleStates(player);
-        // tick 续期会在下一个 tick 自动根据 HELMET_MODE 恢复夜视效果
+        if (player instanceof ServerPlayer serverPlayer) {
+            syncAbilityState(serverPlayer);
+        }
     }
 
     /** 装备变更时：只补齐铁砧工艺组件（旧版逻辑，完全不碰效果）*/
@@ -1244,26 +1183,52 @@ public class ModArmorSetHandler {
 
         DamageSource source = event.getContainer().getSource();
 
-        // 超限合金靴子：永久免疫摔落伤害（穿靴子时任何方式摔落都不受伤，
-        // 但保留正常下落判定，不影响跳跃/踩耕地/落地方块声音等事件）
+        ItemStack helmet = player.getItemBySlot(EquipmentSlot.HEAD);
+        ItemStack chest = player.getItemBySlot(EquipmentSlot.CHEST);
         ItemStack boots = player.getItemBySlot(EquipmentSlot.FEET);
+
+        boolean transHelmet = helmet.is(ModItems.TRANSCENDIUM_HELMET.get());
+        boolean emberHelmet = helmet.is(ModItems.EMBER_METAL_HELMET.get());
+        boolean frostHelmet = helmet.is(ModItems.FROST_METAL_HELMET.get());
+
+        // 超限合金靴子：永久免疫摔落伤害
         if (boots.is(ModItems.TRANSCENDIUM_BOOTS.get()) && source.is(DamageTypes.FALL)) {
             event.getContainer().setNewDamage(0.0f);
             return;
         }
 
-        ItemStack chest = player.getItemBySlot(EquipmentSlot.CHEST);
-        if (!chest.is(ModItems.TRANSCENDIUM_CHESTPLATE.get())) return;
+        if ((transHelmet || emberHelmet) && source.is(net.minecraft.tags.DamageTypeTags.IS_FIRE)) {
+            event.getContainer().setNewDamage(0.0f);
+            return;
+        }
+        if (transHelmet && source.is(net.minecraft.tags.DamageTypeTags.IS_DROWNING)) {
+            event.getContainer().setNewDamage(0.0f);
+            return;
+        }
+        if (frostHelmet && source.is(net.minecraft.tags.DamageTypeTags.IS_FREEZING)) {
+            event.getContainer().setNewDamage(0.0f);
+            return;
+        }
 
-        // 无视：魔法伤害、虚空伤害、接触伤害
-        if (source.is(DamageTypes.MAGIC) || source.is(DamageTypes.INDIRECT_MAGIC)
-                || source.is(DamageTypes.FELL_OUT_OF_WORLD)
-                || source.is(DamageTypes.CACTUS) || source.is(DamageTypes.SWEET_BERRY_BUSH)
-                || source.is(DamageTypes.THORNS) || source.is(DamageTypes.SONIC_BOOM)
-                || source.is(DamageTypes.EXPLOSION) || source.is(DamageTypes.PLAYER_EXPLOSION)
-                || source.is(DamageTypes.BAD_RESPAWN_POINT)) {
+        if (chest.is(ModItems.TRANSCENDIUM_CHESTPLATE.get()) && isBarrierIIIgnored(source)) {
             event.getContainer().setNewDamage(0.0f);
         }
+    }
+
+    private static boolean isBarrierIIIgnored(DamageSource source) {
+        return source.is(DamageTypes.MAGIC)
+                || source.is(DamageTypes.INDIRECT_MAGIC)
+                || source.is(DamageTypes.DRAGON_BREATH)
+                || source.is(DamageTypes.WITHER)
+                || source.is(DamageTypes.WITHER_SKULL)
+                || source.is(DamageTypes.SONIC_BOOM)
+                || source.is(DamageTypes.FELL_OUT_OF_WORLD)
+                || source.is(DamageTypes.CACTUS)
+                || source.is(DamageTypes.SWEET_BERRY_BUSH)
+                || source.is(DamageTypes.THORNS)
+                || source.is(DamageTypes.EXPLOSION)
+                || source.is(DamageTypes.PLAYER_EXPLOSION)
+                || source.is(DamageTypes.BAD_RESPAWN_POINT);
     }
 
     // ========================================================================

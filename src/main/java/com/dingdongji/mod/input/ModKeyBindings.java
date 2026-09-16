@@ -59,9 +59,23 @@ public class ModKeyBindings {
      */
     public static void tick(Minecraft mc) {
         while (ABILITY_KEY.consumeClick()) {
+            if (mc.player != null) {
+                var boots = mc.player.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.FEET);
+                if (boots.is(com.dingdongji.mod.item.ModItems.EMBER_METAL_BOOTS.get())) {
+                    com.dingdongji.mod.client.ClientAbilityState.lavaWalker =
+                            !com.dingdongji.mod.client.ClientAbilityState.lavaWalker;
+                }
+            }
             PacketDistributor.sendToServer(new AbilityTogglePacket(false));
         }
         while (GLOWING_VISION_KEY.consumeClick()) {
+            if (mc.player != null) {
+                var helmet = mc.player.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.HEAD);
+                if (helmet.is(com.dingdongji.mod.item.ModItems.TRANSCENDIUM_HELMET.get())) {
+                    com.dingdongji.mod.client.ClientAbilityState.helmetMode =
+                            (com.dingdongji.mod.client.ClientAbilityState.helmetMode + 1) % 6;
+                }
+            }
             PacketDistributor.sendToServer(new GlowingVisionTogglePacket());
         }
         while (NEUTRON_BARRIER_KEY.consumeClick()) {

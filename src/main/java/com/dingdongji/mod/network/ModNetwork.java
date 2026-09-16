@@ -52,7 +52,23 @@ public class ModNetwork {
                 IonocraftBootsFlyingPacket.STREAM_CODEC,
                 new IonocraftBootsFlyingHandler()
         );
+        registrar.playToClient(
+                AbilityStateSyncPacket.TYPE,
+                AbilityStateSyncPacket.STREAM_CODEC,
+                new AbilityStateSyncHandler()
+        );
 
+    }
+
+    public static class AbilityStateSyncHandler implements IPayloadHandler<AbilityStateSyncPacket> {
+        @Override
+        public void handle(AbilityStateSyncPacket packet, IPayloadContext context) {
+            context.enqueueWork(() -> {
+                if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
+                    com.dingdongji.mod.client.ClientAbilityState.applySync(packet.lavaWalker(), packet.helmetMode());
+                }
+            });
+        }
     }
 
     // ===== 超限靴子蹈虚飞行状态同步处理器（服务端 → 客户端）=====

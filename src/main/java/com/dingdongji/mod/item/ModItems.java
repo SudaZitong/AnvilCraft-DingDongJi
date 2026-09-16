@@ -186,6 +186,7 @@ public class ModItems {
                             new Item.Properties()
                                     .durability(vanillaArmor(ArmorItem.Type.HELMET, VANILLA_NETHERITE))
                                     .component(ModComponents.MEANINGLESS.get(), MeaninglessComponent.DEFAULT)
+                                    .component(ModComponents.FROST_WARD.get(), FrostWardComponent.INSTANCE)
                     )
             );
 
@@ -213,6 +214,7 @@ public class ModItems {
                             new Item.Properties()
                                     .durability(vanillaArmor(ArmorItem.Type.BOOTS, VANILLA_NETHERITE))
                                     .component(ModComponents.MEANINGLESS.get(), MeaninglessComponent.DEFAULT)
+                                    .component(ModComponents.FROST_WALK.get(), FrostWalkComponent.INSTANCE)
                     )
             );
 

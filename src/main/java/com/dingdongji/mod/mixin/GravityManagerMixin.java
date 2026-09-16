@@ -26,7 +26,7 @@ import com.dingdongji.mod.item.ModItems;
 @Mixin(targets = "dev.dubhe.anvilcraft.util.GravityManager")
 public abstract class GravityManagerMixin {
 
-    private static boolean hasFullTranscendiumSet(Entity entity) {
+    public static boolean hasFullTranscendiumSet(Entity entity) {
         if (!(entity instanceof Player player)) return false;
         return player.getItemBySlot(EquipmentSlot.HEAD).is(ModItems.TRANSCENDIUM_HELMET.get())
                 && player.getItemBySlot(EquipmentSlot.CHEST).is(ModItems.TRANSCENDIUM_CHESTPLATE.get())

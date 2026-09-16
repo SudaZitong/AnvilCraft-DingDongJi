@@ -154,6 +154,7 @@ public class ModEvents {
     private static final net.minecraft.network.chat.Style EMBER_METAL_STYLE = net.minecraft.network.chat.Style.EMPTY.withColor(0xFF4500).withItalic(false);
     private static final net.minecraft.network.chat.Style TRANSCENDIUM_STYLE = net.minecraft.network.chat.Style.EMPTY.withColor(0xBA55D3).withItalic(false);
     private static final net.minecraft.network.chat.Style FROST_STYLE = net.minecraft.network.chat.Style.EMPTY.withColor(0x9DD8FF).withItalic(false);
+    private static final net.minecraft.network.chat.Style FROST_ABILITY_STYLE = net.minecraft.network.chat.Style.EMPTY.withColor(0xE8FFFF).withItalic(false);
     private static final net.minecraft.network.chat.Style CONVERTED_ENCH_STYLE = net.minecraft.network.chat.Style.EMPTY.withColor(0x5F93A3).withItalic(false);
     private static final net.minecraft.network.chat.Style GRAY_STYLE = net.minecraft.network.chat.Style.EMPTY.withColor(0xAAAAAA).withItalic(false);
     private static final net.minecraft.network.chat.Style CREATE_TEMPLATE_STYLE = net.minecraft.network.chat.Style.EMPTY.withColor(0xAA00FF).withItalic(false);
@@ -214,7 +215,7 @@ public class ModEvents {
 
         // 余烬
         if (stack.has(ModComponents.HEAT_INSULATION.get())) {
-            descLines.add(Component.literal("赴汤：隔绝高温环境带来的灼烧").setStyle(EMBER_METAL_STYLE));
+            descLines.add(Component.translatable("tooltip.dingdongji.heat_insulation").setStyle(EMBER_METAL_STYLE));
         }
         if (stack.has(ModComponents.BARRIER_I.get())) {
             descLines.add(Component.literal("壁垒I：对大部分伤害明显减伤").setStyle(EMBER_METAL_STYLE));
@@ -224,24 +225,30 @@ public class ModEvents {
         }
         if (stack.has(ModComponents.LAVA_WALKER.get())) {
             String key = com.dingdongji.mod.input.ModKeyBindings.ABILITY_KEY.getTranslatedKeyMessage().getString();
-            descLines.add(Component.literal(String.format("蹈火：按 [%s] 切换，行走自带火焰效果", key)).setStyle(EMBER_METAL_STYLE));
+            descLines.add(Component.translatable("tooltip.dingdongji.lava_walker", key).setStyle(EMBER_METAL_STYLE));
         }
 
         // 超限
         if (stack.has(ModComponents.GLOWING_VISION.get())) {
             String glowingKey = com.dingdongji.mod.input.ModKeyBindings.GLOWING_VISION_KEY.getTranslatedKeyMessage().getString();
-            descLines.add(Component.literal(String.format("适应：按 [%s] 键切换高亮敌对生物和夜视；适应黑暗，水下，高温环境", glowingKey)).setStyle(TRANSCENDIUM_STYLE));
+            descLines.add(Component.translatable("tooltip.dingdongji.glowing_vision", glowingKey).setStyle(TRANSCENDIUM_STYLE));
         }
         if (stack.has(ModComponents.NEUTRON_BARRIER.get())) {
             String neutronKey = com.dingdongji.mod.input.ModKeyBindings.NEUTRON_BARRIER_KEY.getTranslatedKeyMessage().getString();
             descLines.add(Component.literal(String.format("中子屏罩：按 [%s] 切换清除飞向自身的弹射物与排斥靠近自身敌对生物的开关", neutronKey)).setStyle(TRANSCENDIUM_STYLE));
         }
         if (stack.has(ModComponents.BARRIER_II.get())) {
-            descLines.add(Component.literal("壁垒II：对大部分伤害大幅减伤，无视魔法伤害，虚空伤害，接触伤害，爆炸伤害；生命值低时紧急治愈穿戴者，触发时清除所有负面效果").setStyle(TRANSCENDIUM_STYLE));
+            descLines.add(Component.translatable("tooltip.dingdongji.barrier_ii").setStyle(TRANSCENDIUM_STYLE));
         }
         if (stack.is(ModItems.TRANSCENDIUM_BOOTS.get())) {
             String key = com.dingdongji.mod.input.ModKeyBindings.ABILITY_KEY.getTranslatedKeyMessage().getString();
-            descLines.add(Component.literal(String.format("蹈虚：穿戴后即可创造飞行，按 [%s] 可开关；与飘升机同时穿戴时提升飞行速度", key)).setStyle(TRANSCENDIUM_STYLE));
+            descLines.add(Component.translatable("tooltip.dingdongji.stride_void_enhanced", key).setStyle(TRANSCENDIUM_STYLE));
+        }
+        if (stack.has(ModComponents.FROST_WARD.get())) {
+            descLines.add(Component.translatable("tooltip.dingdongji.frost_ward").setStyle(FROST_ABILITY_STYLE));
+        }
+        if (stack.has(ModComponents.FROST_WALK.get())) {
+            descLines.add(Component.translatable("tooltip.dingdongji.frost_walk").setStyle(FROST_ABILITY_STYLE));
         }
 
         // 偏执
@@ -292,9 +299,9 @@ public class ModEvents {
             long interval = com.dingdongji.mod.event.ModArmorSetHandler.CHEST_HEAL_INTERVAL;
             if (now < lastHeal + interval) {
                 int remaining = (int) ((lastHeal + interval - now) / 20);
-                list.add(Component.literal(String.format("应急治愈冷却中：%d秒", remaining)).setStyle(GRAY_STYLE));
+                list.add(Component.translatable("tooltip.dingdongji.barrier_ii.cooldown", remaining).setStyle(GRAY_STYLE));
             } else {
-                list.add(Component.literal("应急治愈就绪").setStyle(net.minecraft.network.chat.Style.EMPTY.withColor(0x00FF00).withItalic(false)));
+                list.add(Component.translatable("tooltip.dingdongji.barrier_ii.ready").setStyle(net.minecraft.network.chat.Style.EMPTY.withColor(0x00FF00).withItalic(false)));
             }
         }
     }

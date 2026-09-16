@@ -8,7 +8,6 @@ import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 
 import javax.annotation.Nullable;
@@ -40,15 +39,6 @@ public class AnvilCraftCompat {
     private static Object eternalInstance = null;
     @Nullable
     private static Object providenceInstance = null;
-
-    // 飘升机物品类缓存
-    @Nullable
-    private static Class<?> ionocraftBackpackItemClass = null;
-    @Nullable
-    private static java.lang.reflect.Method ionocraftGetByPlayer = null;
-    @Nullable
-    private static java.lang.reflect.Method ionocraftGetEnergy = null;
-    private static boolean ionocraftChecked = false;
 
     /**
      * 初始化缓存：查找所有铁砧工艺组件并缓存
@@ -122,69 +112,4 @@ public class AnvilCraftCompat {
         }
     }
 
-    // ==================================================================
-    //  飘升机（Ionocraft Backpack）检测
-    // ==================================================================
-
-    /**
-     * 初始化飘升机反射缓存（延迟初始化，首次调用时执行）
-     */
-    private static void initIonocraft() {
-        if (ionocraftChecked) return;
-        ionocraftChecked = true;
-        // 兼容铁砧工艺飘升机类名大小写变化：
-        // 旧版(1.6.0及之前)为 IonoCraftBackpackItem，新版(snapshot.2142及之后)改为 IonocraftBackpackItem
-        String[] candidates = {
-                "dev.dubhe.anvilcraft.item.IonocraftBackpackItem",
-                "dev.dubhe.anvilcraft.item.IonoCraftBackpackItem"
-        };
-        for (String clsName : candidates) {
-            try {
-                ionocraftBackpackItemClass = Class.forName(clsName);
-                ionocraftGetByPlayer = ionocraftBackpackItemClass.getDeclaredMethod("getByPlayer", Player.class);
-                ionocraftGetByPlayer.setAccessible(true);
-                ionocraftGetEnergy = ionocraftBackpackItemClass.getDeclaredMethod("getEnergyStored", ItemStack.class);
-                ionocraftGetEnergy.setAccessible(true);
-                LOGGER.info("[DingDongJi] 飘升机反射初始化成功: " + clsName);
-                return;
-            } catch (Exception e) {
-                ionocraftBackpackItemClass = null;
-                ionocraftGetByPlayer = null;
-                ionocraftGetEnergy = null;
-                // 尝试下一个候选类名
-            }
-        }
-        LOGGER.info("[DingDongJi] 飘升机未安装或反射失败，跳过");
-    }
-
-    /**
-     * 检测玩家是否佩戴了有电量的飘升机（背包或饰品栏均可）
-     * @return 飘升机 ItemStack（empty 表示没有）
-     */
-    public static ItemStack getIonocraftBackpack(Player player) {
-        initIonocraft();
-        if (ionocraftBackpackItemClass == null || ionocraftGetByPlayer == null) return ItemStack.EMPTY;
-        try {
-            Object result = ionocraftGetByPlayer.invoke(null, player);
-            if (result instanceof ItemStack stack && !stack.isEmpty()) return stack;
-        } catch (Exception e) {
-            // 静默
-        }
-        return ItemStack.EMPTY;
-    }
-
-    /**
-     * 检测玩家是否佩戴了有电量的飘升机
-     */
-    public static boolean hasActiveIonocraftBackpack(Player player) {
-        ItemStack backpack = getIonocraftBackpack(player);
-        if (backpack.isEmpty()) return false;
-        if (ionocraftGetEnergy == null) return false;
-        try {
-            int energy = (int) ionocraftGetEnergy.invoke(null, backpack);
-            return energy > 0;
-        } catch (Exception e) {
-            return false;
-        }
-    }
 }

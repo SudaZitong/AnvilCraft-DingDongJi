@@ -8,22 +8,20 @@ import net.minecraft.world.item.ItemStack;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * 超限头盔/胸甲：取消受击红倾（不取消伤害，仅取消受伤动画）。
+ * 浮霜头盔：进入细雪不累积冻结，从而不出现结霜放大。
  */
 @Mixin(Entity.class)
-public abstract class MixinLivingEntityHurt {
+public abstract class MixinCanFreeze {
 
-    @Inject(method = "animateHurt", at = @At("HEAD"), cancellable = true)
-    private void ddj$cancelHurtAnimation(float yaw, CallbackInfo ci) {
+    @Inject(method = "canFreeze", at = @At("HEAD"), cancellable = true)
+    private void ddj$frostHelmetNoFreeze(CallbackInfoReturnable<Boolean> cir) {
         if ((Object) this instanceof Player player) {
             ItemStack helmet = player.getItemBySlot(EquipmentSlot.HEAD);
-            ItemStack chest = player.getItemBySlot(EquipmentSlot.CHEST);
-            if (helmet.is(ModItems.TRANSCENDIUM_HELMET.get())
-                    || chest.is(ModItems.TRANSCENDIUM_CHESTPLATE.get())) {
-                ci.cancel();
+            if (helmet.is(ModItems.FROST_METAL_HELMET.get())) {
+                cir.setReturnValue(false);
             }
         }
     }

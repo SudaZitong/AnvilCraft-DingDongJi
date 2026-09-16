@@ -123,4 +123,20 @@ public class ModComponents {
                     .build()
             );
 
+    // ===== 浮霜金属套组件 =====
+
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<FrostWardComponent>> FROST_WARD =
+            COMPONENTS.register("frost_ward", () -> DataComponentType.<FrostWardComponent>builder()
+                    .persistent(FrostWardComponent.CODEC)
+                    .networkSynchronized(FrostWardComponent.STREAM_CODEC)
+                    .build()
+            );
+
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<FrostWalkComponent>> FROST_WALK =
+            COMPONENTS.register("frost_walk", () -> DataComponentType.<FrostWalkComponent>builder()
+                    .persistent(FrostWalkComponent.CODEC)
+                    .networkSynchronized(FrostWalkComponent.STREAM_CODEC)
+                    .build()
+            );
+
 }

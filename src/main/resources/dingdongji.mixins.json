@@ -22,13 +22,21 @@
     "MixinSmithingTemplateUsable",
     "MixinLivingEntityHurt",
     "MixinFireImmunityEntity",
-    "EntityCanTrampleMixin"
+    "EntityCanTrampleMixin",
+    "MixinBlockFriction",
+    "MixinCanStandOnFluid",
+    "MixinEntityGravity",
+    "MixinCanFreeze"
   ],
   "client": [
     "AdjacentSmithingScreenMixin",
     "TranscendenceSmithingScreenMixin",
     "MixinLavaVision",
-    "MixinFireOverlay"
+    "MixinFireOverlay",
+    "MixinTranscendiumFog",
+    "MixinGuiOverlays",
+    "MixinLightTextureNightVision",
+    "MixinNightVisionScale"
   ],
   "injectors": {
     "defaultRequire": 0

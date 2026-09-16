@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * 超限合金头盔：屏蔽 in_fire 状态（着火动画/火焰视觉效果）。
+ * 余烬 / 超限头盔：屏蔽 in_fire 状态（着火动画/火焰视觉效果）。
  * 拦截 setRemainingFireTicks：着火（>0）直接取消，熄灭（<=0）放行。
  */
 @Mixin(Entity.class)
@@ -22,7 +22,8 @@ public abstract class MixinFireImmunityEntity {
         if (fireTicks <= 0) return; // 允许熄灭（clearFire / 进水）
         if ((Object) this instanceof Player player) {
             ItemStack helmet = player.getItemBySlot(EquipmentSlot.HEAD);
-            if (helmet.is(ModItems.TRANSCENDIUM_HELMET.get())) {
+            if (helmet.is(ModItems.EMBER_METAL_HELMET.get())
+                    || helmet.is(ModItems.TRANSCENDIUM_HELMET.get())) {
                 ci.cancel();
             }
         }
