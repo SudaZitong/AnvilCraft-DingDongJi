@@ -1,0 +1,277 @@
+叮咚叽金属装备改版需求规格（dingdongji 0.0.8 版）
+----------------------------------------------------------------
+一、超限合金头盔 dingdongji:transcendium_helmet（组件 glowing_vision）
+----------------------------------------------------------------
+1. 取消全部视觉遮挡（客户端）。穿戴时：
+   - FogRenderer：所有雾距离/雾色按无雾处理（水、岩浆、细雪、虚空、
+     失明/黑暗等全部）；
+   - ScreenEffectRenderer：取消全部 overlay——renderFire（着火）、
+     renderWaterOverlay（水下扭曲）、renderInWall（卡墙）、
+     renderPortal（传送门眩晕）、粉末雪结霜；
+   - 效果类视觉反馈同样取消：中毒/凋灵屏幕变色扭曲、受击红倾
+     （与现有 animateHurt 拦截统一）；
+   - 沿用现有 Mixin 方式按装备槽 HEAD 判断；MixinFireOverlay 的装备
+     判断从"仅余烬头盔"扩展为"余烬或超限头盔"，其余遮挡仅超限头盔取消。
+2. 真夜视（不依赖药水效果）：头盔切到夜视模式时，客户端直接获得夜视
+   提亮（在光照图/夜视强度计算路径上视为满夜视）；删除
+   handleTranscendiumHelmet 中对自己施加/移除 NIGHT_VISION 的逻辑；
+   玩家身上不出现夜视图标，/effect 查不到。
+3. 取消伤害（服务端 onLivingDamage）：取消所有属于标签
+   #minecraft:is_fire 与 #minecraft:is_drowning 的伤害类型
+   （DamageSource.is(DamageTypeTags.IS_FIRE / IS_DROWNING)，setNewDamage(0)）。
+4. 氧气锁满：穿戴时每 tick 将 airSupply 设为上限 getMaxAirSupply()（300），
+   水下与太空（anvilcraft 月球等走原版 drown 链的缺氧环境）均不消耗、
+   不冒气泡。
+5. 删除隐藏药水授予：移除 FIRE_RESISTANCE、WATER_BREATHING（连同第 2 条
+   的 NIGHT_VISION）的 addHiddenEffect 及脱盔移除逻辑；黑暗效果仍每 tick
+   移除；clearFire 保留；MixinFireImmunityEntity 保留。
+6. 替换 tooltip（lang key tooltip.dingdongji.glowing_vision，
+   %s 为实时键名）：
+   适应：按 [%s] 键在高光敌对生物、夜视之间切换；无视黑暗效果、火焰伤害，
+   可在水下、太空环境中呼吸；无视液体遮挡与雾效果
+
+----------------------------------------------------------------
+二、余烬金属头盔 anvilcraft:ember_metal_helmet（组件 heat_insulation）
+----------------------------------------------------------------
+1. 取消火焰伤害：取消所有属于 #minecraft:is_fire 标签的伤害
+   （与超限头盔共用同一段判定逻辑）。
+2. 删除隐藏 FIRE_RESISTANCE 药水：移除 handleEmberHelmet 的
+   addHiddenEffect/removeOwnEffect；防点燃继续由 MixinFireImmunityEntity
+   承担，判断扩展为"余烬或超限头盔"。
+3. 仅岩浆透视（客户端）：保留现有 MixinLavaVision（FogRenderer.setupFog
+   岩浆无雾）与 MixinFireOverlay 着火层取消，装备判断维持余烬头盔；
+   其他雾与屏幕遮挡不处理。
+4. 重命名组件语义并替换 tooltip（tooltip.dingdongji.heat_insulation）：
+   赴汤：无视火焰伤害，同时可透视岩浆
+
+----------------------------------------------------------------
+三、浮霜金属头盔 dingdongji:frost_metal_helmet（新增组件）
+----------------------------------------------------------------
+1. 新增数据组件（record + CODEC/STREAM_CODEC，注册进 ModComponents，
+   参考 HeatInsulationComponent 形态），挂载到该物品。
+2. 取消冰冻伤害：穿戴时取消所有属于 #minecraft:freeze 标签的伤害
+   （细雪持续冰冻等），同时进入细雪中不视觉放大，屏幕不出现粉末雪结霜。
+3. 新增 lang 行并以该组件渲染 tooltip，颜色 #E8FFFF：
+   傲雪：无视冰冻伤害
+
+----------------------------------------------------------------
+四、超限合金胸甲 dingdongji:transcendium_chestplate（组件 barrier_ii）
+----------------------------------------------------------------
+onLivingDamage 中替换现有伤害清单：全部改为 DamageTypes 精确 ID 匹配，仅限以下 13 种，对应原胸甲 tooltip
+描述的魔法、虚空、接触、爆炸四类：
+1. 魔法/凋零/音波类（6）：magic、indirect_magic、dragon_breath、
+   wither、wither_skull、sonic_boom；
+2. 虚空（1）：out_of_world。
+3. 接触类（3）：cactus（仙人掌）、sweet_berry_bush（甜浆果丛）、
+   thorns（荆棘反弹）；
+4. 爆炸类（3）：explosion、player_explosion、bad_respawn_point
+   （床/重生锚在错误维度爆炸的伤害）。
+全部以 DamageSource.is(DamageTypes.X) 精确判定后 setNewDamage(0)，
+不使用任何伤害标签；
+5. 替换 tooltip（tooltip.dingdongji.barrier_ii），新文案见第十节；
+   barrier_ii.cooldown / barrier_ii.ready 两条状态文案不变。
+
+----------------------------------------------------------------
+五、浮霜金属靴子 dingdongji:frost_metal_boots（新增组件）
+----------------------------------------------------------------
+1. 恒定摩擦 0.6：新增通用 Mixin 注入 1.21.1 的
+   BlockBehaviour$BlockStateBase#getFriction(BlockGetter, BlockPos, Entity)
+   （HEAD cancellable）：传入实体为玩家且脚部装备为本物品时
+   setReturnValue(0.6F)。冰、蓝冰、史莱姆块等所有方块一律按 0.6 结算，
+   冰面不打滑。
+2. 细雪行走：现有 canWalkOnPowderedSnow 返回 true 已满足，保留。
+3. 新增数据组件并挂载；新增 lang 行，tooltip 颜色 #E8FFFF：
+   凌霜：可在细雪上行走，并无视方块摩擦
+
+----------------------------------------------------------------
+六、超限合金靴子 dingdongji:transcendium_boots
+----------------------------------------------------------------
+在保留现有"蹈虚"飞行（并移除飘升机联动，见第十一节）的前提下，
+新增被动地表行走（常驻、无开关）：
+1. 全液体表面行走：水、岩浆等液面视为地面，可站立行走，不沉入、
+   不受流体推动。canStandOnFluid/托举 tick 一律附加
+   !player.isShiftKeyDown()：按住潜行取消托举，可潜入水中或没入岩浆；
+   松开后接触液面恢复。临时取消不写回任何持久化状态。
+2. 世界底部行走（常驻、无开关）：
+   - 全维度统一在 Y=-64 平面提供支撑（硬编码，不取 getMinY()；
+     末地等维度该平面位于虚空内部同样生效）；
+   - 玩家下落跨越 Y=-64 的瞬间，若未潜行：垂直速度归零、
+     setOnGround(true)，可在平面上行走（单向碰撞板语义）；
+   - 按住潜行：不生成支撑，穿过平面继续坠落；已经位于 Y<-64 后
+     不主动拉回，重新向上跨越平面时恢复托举；
+   - 穿过平面会进入虚空并正常承受 out_of_world 虚空伤害（穿超限胸甲时
+     该伤害在胸甲取消名单内；不穿胸甲则正常掉血死亡）。
+3. 细雪行走：现有 canWalkOnPowderedSnow 已满足。
+4. 岩浆免伤不由靴子提供，依赖头盔 #is_fire 取消 +
+   MixinFireImmunityEntity 防点燃（套装分工）。
+5. 实现参照原版炽足兽：Mixin LivingEntity#canStandOnFluid(FluidState)
+   按脚穿装备返回 true（水+岩浆），tick 中液面 setOnGround(true)、
+   浸没时水平速度阻尼+垂直上浮。
+
+----------------------------------------------------------------
+七、余烬金属靴子 anvilcraft:ember_metal_boots（组件 lava_walker）
+----------------------------------------------------------------
+1. 蹈火 = 按键开关 + 状态持久化：沿用现有 ability_toggle 键、
+   LAVA_WALKER_ENABLED 与 dingdongji:lava_walker 存取，不改键位。
+2. 开关 ON 时可在岩浆表面行走（与第六节同一套炽足兽式实现，
+   canStandOnFluid 仅对岩浆返回 true + 液面托举）；行走判定统一附加
+   !player.isShiftKeyDown()：按住潜行临时取消托举，可没入岩浆下潜；
+   松开并接触液面自动恢复。临时取消不写回持久化状态。
+3. 删除现有 handleEmberBootsFirePath 行走点火效果。
+4. tooltip（tooltip.dingdongji.lava_walker，%s=实时键名）：
+   蹈火：按 [%s] 切换，可在岩浆上行走
+
+----------------------------------------------------------------
+八、通用要求
+----------------------------------------------------------------
+1. 所有取消伤害统一为 LivingDamageEvent.Pre →
+   getContainer().setNewDamage(0)；判定先查服务端、查对应盔甲槽，
+   装备判定用 ItemStack.is(ModItems.X.get())，标签用 DamageSource.is(TagKey)，
+   具体类型用 DamageSource.is(ResourceKey)。
+2. 所有按键状态经现有 saveToggleStates/loadToggleStates
+   （player.persistentData）持久化；新增开关状态照同一机制登记，
+   进出存档不重置。
+3. 组件均为 DataComponentType + record（CODEC/STREAM_CODEC）并在
+   ModItems 注册物品时通过 Properties.component(...) 挂载；
+   tooltip 由组件驱动渲染，浮霜两件固定色值 #E8FFFF。
+4. 清理药水效果后，markEffectAdded/removeOwnEffect 中对应的
+   FIRE_RESISTANCE、WATER_BREATHING、NIGHT_VISION 记录逻辑一并移除，
+   避免脱盔误删外部效果。
+5. 不影响 permutation/deformation 配方（浮霜↔余烬、超限二合一）与
+   "无义"转换机制。
+6. 所有表面行走效果（余烬靴岩浆、超限靴全液体、Y=-64 底部平面）的
+   潜行临时取消，统一以当 tick 实时读取 player.isShiftKeyDown() 实现，
+   不产生持久化状态、不影响按键开关存储值。
+
+----------------------------------------------------------------
+九、超限合金全套：无视月球失重
+----------------------------------------------------------------
+背景（anvilcraft 1.6.0 反编译）：
+  GravityManager.<clinit>：
+    registerDimensionGravity(VOID_PLANET_LEVEL, -10.0);  // 虚空行星
+    registerDimensionGravity(MUN_LEVEL, 1.0/6);          // 月球 0.1667
+    其他维度 getOrDefault(dimension, 1.0)。
+  EntityMixin（MixinExtras）在 Entity#getGravity() 处：
+    最终重力 = 0.08 × GravityType.getScalar(entity)
+               × getDimensionGravity(level) − gravityVector.y
+  玩家 GravityType=NORMAL(scalar=1)，月球玩家重力≈0.01333/tick，
+  即 1/6 低重力。
+  现有 GravityManagerMixin 只把 getGravityVector 改 ZERO，
+  对维度标量无效。
+
+需求：
+1. 触发条件：玩家同时穿戴超限合金头盔、胸甲、护腿、靴子四件
+   （复用 GravityManagerMixin.hasFullTranscendiumSet(Entity)）。
+2. 效果：在低/负重力维度（月球 0.1667、虚空行星 -10 及任何
+   DIMENSION_GRAVITY_MAP 注册值）中，实体垂直重力恢复为原版 0.08/tick，
+   跳跃、下落、摔落节奏与主世界一致；主世界等 1.0 维度无变化。
+3. 实现：新增通用 Mixin（@Mixin(Entity.class)，common 端）：
+     @Inject(method="getGravity()D", at=@At("RETURN"), cancellable=true)
+     private void ddj$restoreGravity(CallbackInfoReturnable<Double> cir) {
+         Entity self = (Entity)(Object)this;
+         if (GravityManagerMixin.hasFullTranscendiumSet(self)) {
+             cir.setReturnValue(0.08);
+         }
+     }
+4. Mixin priority 设为大于默认 1000（如 1500），保证在 anvilcraft 的
+   anvilcraft$ApplyGravity 之后覆盖返回值；两端（客户端物理预测+服务端）
+   同一 Mixin 自动生效。
+5. 直接返回 0.08 同时吞掉重力向量 y 分量，语义为"不受任何重力科技影响"，
+   与现有 getGravityVector→ZERO 一致。
+6. 保留现有 GravityManagerMixin：重力场方块的水平牵引走
+   applyMovementEffects/deferHorizontalGravity，不经 getGravity()，
+   仍需它把向量归 ZERO；两者合起来全套超限才完全免疫重力科技。
+7. 不改 GravityManager、不碰 MunEntityShadowMixin（仅渲染）；
+   掉落物/其他实体不受影响（判定绑定玩家装备）。
+8. 被动常驻，无开关、无 tooltip 变更、不新增持久化状态。
+
+----------------------------------------------------------------
+十、tooltip / lang 文案汇总
+----------------------------------------------------------------
+tooltip.dingdongji.glowing_vision（超限头盔，替换）：
+  适应：按 [%s] 键在高光敌对生物、夜视之间切换；无视黑暗效果、火焰伤害，
+  可在水下、太空环境中呼吸；无视液体遮挡与雾
+tooltip.dingdongji.heat_insulation（余烬头盔，替换）：
+  赴汤：无视火焰伤害，同时可透视岩浆
+tooltip.dingdongji.lava_walker（余烬靴，替换）：
+  蹈火：按 [%s] 切换，可在岩浆上行走（潜行可下潜）
+tooltip.dingdongji.barrier_ii（超限胸甲，替换；原"魔法伤害/接触伤害"
+  定位模糊，新文案把四类伤害全部具体枚举，与第四节 13 个伤害 ID 一一对应）：
+  壁垒II：对大部分伤害大幅减伤；无视魔法类伤害（药水魔法、
+  末影龙吐息、凋灵之首、监守者音波）、虚空伤害、接触伤害（仙人掌、
+  甜浆果丛、荆棘反弹）、爆炸伤害；生命值低时
+  紧急治愈穿戴者，触发时清除所有负面效果
+  （tooltip.dingdongji.barrier_ii.cooldown = "应急治愈冷却中：%d秒"、
+  tooltip.dingdongji.barrier_ii.ready = "应急治愈就绪" 两条状态文案
+  保留不变）
+新增（浮霜头盔，新组件），颜色 #E8FFFF：
+  傲雪：无视冰冻伤害
+新增（浮霜靴子，新组件），颜色 #E8FFFF：
+  凌霜：可在细雪上行走，并无视方块摩擦
+  注：现有组件 tooltip 疑似按"tooltip.dingdongji.<组件注册id>"约定
+  自动渲染（glowing_vision、heat_insulation、lava_walker、barrier_ii
+  均同构），两个新组件的注册 id 须与新增 lang key 后缀一致
+  （建议 frost_ward=傲雪、frost_walk=凌霜），交付时由模组作者确认
+  渲染机制后定名。
+tooltip.dingdongji.stride_void（删除）
+tooltip.dingdongji.stride_void_enhanced（超限靴，保留为唯一蹈虚文案）：
+  蹈虚：穿戴后即可创造飞行，按 [%s] 可开关
+%s 均显示实时绑定键名，不写死键位。zh_cn.json 与 en_us.json 同步。
+注：反编译确认 stride_void / stride_void_enhanced 在 0.0.8 类文件中
+均无引用（tooltip 不由模组代码直接渲染），交付时请模组作者确认实际
+渲染来源，确保游戏内只显示修订后的唯一文案。
+
+----------------------------------------------------------------
+十一、移除超限靴与飘升机（IonocraftBackpackItem）全部联动
+----------------------------------------------------------------
+全 jar 扫描确认触点仅两处类：
+1. event/ModArmorSetHandler.handleTranscendiumBootsFlight：
+   - 删除局部变量 hasPack（AnvilCraftCompat.hasActiveIonocraftBackpack）
+     及其全部条件分支；
+   - 穿靴允许飞行条件由"开关ON || 创造 || 旁观 || 飘升机活跃"改为
+     "开关ON || 创造 || 旁观"；
+   - 删除飞行速度提升（Abilities.setFlyingSpeed(0.1F) 及
+     IONOCRAFT_SPEED_BOOSTED map 的写入/恢复），飞行速度恒为原版 0.05；
+     脱靴清理段相关分支一并删除。
+2. util/AnvilCraftCompat：
+   - 删除 getIonocraftBackpack、hasActiveIonocraftBackpack、
+     反射字段 ionocraftGetByPlayer/ionocraftGetEnergy，以及 static 块中
+     对 dev.dubhe.anvilcraft.item.IonocraftBackpackItem
+     （含 IonoCraftBackpackItem 拼写变体）的反射初始化；
+   - Reforging/Eternal/Providence 组件兼容保留不动。
+3. lang：删除 tooltip.dingdongji.stride_void，仅保留
+   stride_void_enhanced（见第十节）。
+4. 保留（属蹈虚本体，勿删）：IONOCRAFT_FLYING/IONOCRAFT_GRANTED 状态、
+   dingdongji:ionocraft_flying 持久化、IONOCRAFT_BOOTS_EXHAUST 飞行粒子、
+   syncIonocraftFlyingState 网络同步、脱靴时 mayfly/flying 还原与
+   onUpdateAbilities。
+飘升机背包本体（铁砧工艺）的功能不受影响；移除联动后，玩家即使背包/
+饰品栏有带电飘升机，也不再获得飞行许可与 3 倍飞行速度。
+
+----------------------------------------------------------------
+十二、预计改动文件清单
+----------------------------------------------------------------
+改：
+  event/ModArmorSetHandler.java
+    - 头盔三件套逻辑、胸甲伤害清单、氧气锁定
+    - 液面/世界底部 tick 托举
+    - 蹈虚飞行移除飘升机联动
+  item/ModComponents.java、item/ModItems.java（新增傲雪/凌霜组件并挂载）
+  util/AnvilCraftCompat.java（删除飘升机反射兼容）
+  assets/dingdongji/lang/zh_cn.json、en_us.json（tooltip 增删改）
+新增：
+  item/component/XxxComponent.java ×2（傲雪、凌霜 record 组件）
+  Mixin：
+    - 摩擦 Mixin（BlockBehaviour$BlockStateBase#getFriction）
+    - 流体站立 Mixin（LivingEntity#canStandOnFluid）
+    - 重力 Mixin（Entity#getGravity RETURN，priority 1500）
+    - 超限头盔全雾/全 overlay 拦截（FogRenderer、ScreenEffectRenderer、
+      效果视觉）
+扩展：
+    MixinLavaVision / MixinFireOverlay / MixinFireImmunityEntity
+    的装备判断（余烬或超限头盔）
+注册：
+  dingdongji.mixins.json 增补新 Mixin
+不改动：
+  GravityManager（anvilcraft）、MunEntityShadowMixin、
+  permutation/deformation 配方、无义机制。
